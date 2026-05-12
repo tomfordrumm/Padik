@@ -23,6 +23,7 @@ class ConversationFactory extends Factory
         return [
             'type' => fake()->randomElement([ConversationType::Direct, ConversationType::Group]),
             'title' => fake()->optional()->sentence(3),
+            'slug' => fake()->unique()->slug(3),
             'status' => ConversationStatus::Active,
             'created_by_id' => User::factory(),
         ];
@@ -33,6 +34,7 @@ class ConversationFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'type' => ConversationType::General,
             'title' => 'General',
+            'slug' => 'general',
             'created_by_id' => null,
         ]);
     }

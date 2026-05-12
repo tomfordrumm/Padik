@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Enums\ConversationType;
+use App\Models\Conversation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Fortify\Features;
 use Tests\TestCase;
@@ -35,5 +37,11 @@ class RegistrationTest extends TestCase
 
         $this->assertAuthenticated();
         $response->assertRedirect(route('dashboard', absolute: false));
+
+        $general = Conversation::query()
+            ->where('type', ConversationType::General)
+            ->firstOrFail();
+
+        $this->assertTrue($general->users()->where('email', 'test@example.com')->exists());
     }
 }

@@ -12,3 +12,17 @@ export type NavItem = {
     icon?: LucideIcon;
     isActive?: boolean;
 };
+
+export type RoomNavItem = {
+    id: number;
+    title: string;
+    slug: string;
+    type: string;
+    unread_count: number;
+};
+
+export type DirectMessageUserNavItem = {
+    id: number;
+    name: string;
+    email: string;
+};

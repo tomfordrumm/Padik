@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { Link, usePage } from '@inertiajs/vue3';
 import { LogOut, Menu, Search, User, X } from 'lucide-vue-next';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard, logout } from '@/routes';
 import { edit as editProfile } from '@/routes/profile';
+import { show as showRoom } from '@/routes/rooms';
+import type { DirectMessageUserNavItem, RoomNavItem } from '@/types';
 
 type ChatPreview = {
     id: number;
+    slug: string;
     name: string;
     initials: string;
     color: string;
@@ -16,33 +19,48 @@ type ChatPreview = {
     active?: boolean;
 };
 
-const chats: ChatPreview[] = [
-    {
-        id: 1,
-        name: 'Marketing-Squad',
-        initials: 'MS',
-        color: 'bg-[#007681]',
-        time: '10:50 AM',
-        preview: 'Marcus Thorne: Should I include the secret mode metrics?',
-        active: true,
-    },
-    {
-        id: 2,
-        name: 'Design-Sync',
-        initials: 'DS',
-        color: 'bg-[#3f6b73]',
-        time: 'Yesterday',
-        preview: 'Sarah Jenkins: Check the new mockups for the dashboard...',
-    },
-    {
-        id: 3,
-        name: 'Product-Roadmap',
-        initials: 'PR',
-        color: 'bg-[#966000]',
-        time: 'Oct 22',
-        preview: 'Alex Chen: Q4 planning starting on Monday team!',
-    },
-];
+const page = usePage();
+const activeTab = ref<'rooms' | 'dms'>('rooms');
+
+const roomColors = ['bg-[#007681]', 'bg-[#3f6b73]', 'bg-[#966000]'];
+
+const initials = (title: string) =>
+    title
+        .split(/[\s-]+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((word) => word[0]?.toUpperCase())
+        .join('');
+
+const chats = computed<ChatPreview[]>(() =>
+    (page.props.rooms as RoomNavItem[]).map((room, index) => ({
+        id: room.id,
+        slug: room.slug,
+        name: room.title,
+        initials: initials(room.title) || '#',
+        color: roomColors[index % roomColors.length],
+        time: room.unread_count > 0 ? `${room.unread_count} unread` : '',
+        preview:
+            room.type === 'general'
+                ? 'All workspace members'
+                : 'Room conversation',
+        active: page.url === showRoom.url(room.slug),
+    })),
+);
+
+const directMessageUsers = computed<ChatPreview[]>(() =>
+    (page.props.directMessageUsers as DirectMessageUserNavItem[]).map(
+        (user, index) => ({
+            id: user.id,
+            slug: user.id.toString(),
+            name: user.name,
+            initials: initials(user.name) || user.name[0]?.toUpperCase() || '?',
+            color: roomColors[index % roomColors.length],
+            time: '',
+            preview: user.email,
+        }),
+    ),
+);
 
 const isDrawerOpen = ref(false);
 
@@ -106,21 +124,34 @@ onBeforeUnmount(() => {
 
             <div class="flex gap-1 border-b border-[#bbc9cb] px-2 pt-2">
                 <button
-                    class="flex-1 border-b-2 border-[#007681] py-3 text-sm font-bold text-[#007681]"
+                    class="flex-1 border-b-2 py-3 text-sm font-bold transition-colors"
+                    :class="
+                        activeTab === 'rooms'
+                            ? 'border-[#007681] text-[#007681]'
+                            : 'border-transparent text-[#6c797c] hover:bg-[#eff5f5]'
+                    "
+                    @click="activeTab = 'rooms'"
                 >
                     Rooms
                 </button>
                 <button
-                    class="flex-1 rounded-t-lg py-3 text-sm font-medium text-[#6c797c] transition-colors hover:bg-[#eff5f5]"
+                    class="flex-1 border-b-2 py-3 text-sm font-bold transition-colors"
+                    :class="
+                        activeTab === 'dms'
+                            ? 'border-[#007681] text-[#007681]'
+                            : 'border-transparent text-[#6c797c] hover:bg-[#eff5f5]'
+                    "
+                    @click="activeTab = 'dms'"
                 >
                     DMs
                 </button>
             </div>
 
-            <div class="chat-scroll flex-1 overflow-y-auto py-2">
-                <button
+            <div v-if="activeTab === 'rooms'" class="chat-scroll flex-1 overflow-y-auto py-2">
+                <Link
                     v-for="chat in chats"
                     :key="chat.id"
+                    :href="showRoom(chat.slug)"
                     class="flex w-full cursor-pointer gap-3 px-3 py-3 text-left transition-colors"
                     :class="
                         chat.active
@@ -142,7 +173,10 @@ onBeforeUnmount(() => {
                             <span class="truncate text-sm font-bold">
                                 {{ chat.name }}
                             </span>
-                            <span class="shrink-0 text-[11px] text-[#6c797c]">
+                            <span
+                                v-if="chat.time"
+                                class="shrink-0 text-[11px] text-[#6c797c]"
+                            >
                                 {{ chat.time }}
                             </span>
                         </span>
@@ -150,7 +184,38 @@ onBeforeUnmount(() => {
                             {{ chat.preview }}
                         </span>
                     </span>
+                </Link>
+            </div>
+
+            <div v-else class="chat-scroll flex-1 overflow-y-auto py-2">
+                <button
+                    v-for="user in directMessageUsers"
+                    :key="user.id"
+                    class="flex w-full cursor-pointer gap-3 border-l-4 border-transparent px-3 py-3 text-left transition-colors hover:bg-[#eff5f5]"
+                >
+                    <span
+                        class="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-white"
+                        :class="user.color"
+                    >
+                        {{ user.initials }}
+                    </span>
+
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm font-bold">
+                            {{ user.name }}
+                        </span>
+                        <span class="block truncate text-xs text-[#6c797c]">
+                            {{ user.preview }}
+                        </span>
+                    </span>
                 </button>
+
+                <p
+                    v-if="directMessageUsers.length === 0"
+                    class="px-4 py-6 text-sm text-[#6c797c]"
+                >
+                    No users yet
+                </p>
             </div>
         </aside>
 

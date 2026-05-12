@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['type', 'title', 'status', 'created_by_id'])]
+#[Fillable(['type', 'title', 'slug', 'status', 'created_by_id'])]
 class Conversation extends Model
 {
     /** @use HasFactory<ConversationFactory> */

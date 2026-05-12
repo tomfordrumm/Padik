@@ -1,4 +1,8 @@
 import type { Auth } from '@/types/auth';
+import type {
+    DirectMessageUserNavItem,
+    RoomNavItem,
+} from '@/types/navigation';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -18,6 +22,8 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             auth: Auth;
+            rooms: RoomNavItem[];
+            directMessageUsers: DirectMessageUserNavItem[];
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

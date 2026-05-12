@@ -2,6 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\ConversationStatus;
+use App\Models\Conversation;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,6 +44,34 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'rooms' => fn () => $request->user()
+                ? $request->user()
+                    ->conversations()
+                    ->where('status', ConversationStatus::Active)
+                    ->orderByRaw('case when type = ? then 0 else 1 end', ['general'])
+                    ->orderBy('title')
+                    ->get(['conversations.id', 'conversations.title', 'conversations.slug', 'conversations.type'])
+                    ->map(fn (Conversation $conversation): array => [
+                        'id' => $conversation->id,
+                        'title' => $conversation->title ?? 'Untitled room',
+                        'slug' => $conversation->slug,
+                        'type' => $conversation->type->value,
+                        'unread_count' => $conversation->pivot->unread_count,
+                    ])
+                    ->values()
+                : [],
+            'directMessageUsers' => fn () => $request->user()
+                ? User::query()
+                    ->whereKeyNot($request->user()->id)
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'email'])
+                    ->map(fn (User $user): array => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                    ])
+                    ->values()
+                : [],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }
