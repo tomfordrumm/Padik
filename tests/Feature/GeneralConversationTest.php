@@ -68,6 +68,7 @@ class GeneralConversationTest extends TestCase
         $user = User::factory()->create();
         $otherUser = User::factory()->create(['name' => 'Alice']);
         $newUser = User::factory()->create(['name' => 'Bob']);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
 
         $conversation = Conversation::factory()->create([
             'type' => ConversationType::Direct,
@@ -93,6 +94,8 @@ class GeneralConversationTest extends TestCase
             ->get(route('dashboard'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
+                ->has('rooms', 1)
+                ->where('rooms.0.type', ConversationType::General->value)
                 ->has('directMessageUsers', 2)
                 ->where('directMessageUsers.0.id', $otherUser->id)
                 ->where('directMessageUsers.0.name', 'Alice')

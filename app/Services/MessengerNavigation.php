@@ -20,6 +20,7 @@ class MessengerNavigation
             ->conversations()
             ->select(['conversations.id', 'conversations.title', 'conversations.slug', 'conversations.type'])
             ->where('status', ConversationStatus::Active)
+            ->whereIn('type', [ConversationType::General, ConversationType::Group])
             ->addSelect([
                 'last_message' => Message::query()
                     ->select('body')

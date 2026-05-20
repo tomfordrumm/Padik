@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
-import { LogOut, Menu, Search, User, X } from 'lucide-vue-next';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
+import { Bell, LogOut, Menu, Search, User, X } from 'lucide-vue-next';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
 import { dashboard, logout } from '@/routes';
+import { show as showDirectMessage } from '@/routes/direct-messages';
+import { read as readNotifications } from '@/routes/notifications';
 import { edit as editProfile } from '@/routes/profile';
 import { show as showRoom } from '@/routes/rooms';
-import type { DirectMessageUserNavItem, RoomNavItem } from '@/types';
+import type {
+    Auth,
+    DirectMessageUserNavItem,
+    NotificationItem,
+    NotificationNav,
+    RoomNavItem,
+} from '@/types';
 
 type ChatPreview = {
     id: number;
@@ -20,7 +28,11 @@ type ChatPreview = {
 };
 
 const page = usePage();
-const activeTab = ref<'rooms' | 'dms'>('rooms');
+const currentUserId = Number((page.props.auth as Auth).user.id);
+const activeTab = ref<'rooms' | 'dms'>(
+    page.url.startsWith('/dms/') ? 'dms' : 'rooms',
+);
+const areNotificationsOpen = ref(false);
 
 const roomColors = ['bg-[#007681]', 'bg-[#3f6b73]', 'bg-[#966000]'];
 
@@ -55,9 +67,22 @@ const directMessageUsers = computed<ChatPreview[]>(() =>
             color: roomColors[index % roomColors.length],
             time: '',
             preview: user.last_message ?? 'Start a conversation',
+            active: page.url === showDirectMessage.url(user.id),
         }),
     ),
 );
+
+const notifications = computed<NotificationNav>(
+    () =>
+        (page.props.notifications as NotificationNav) ?? {
+            unread_count: 0,
+            items: [],
+        },
+);
+
+type BroadcastDirectMessageNotification = NotificationItem & {
+    id?: string;
+};
 
 const isDrawerOpen = ref(false);
 
@@ -65,18 +90,86 @@ const closeDrawer = () => {
     isDrawerOpen.value = false;
 };
 
+const closeNotifications = () => {
+    areNotificationsOpen.value = false;
+};
+
+const markNotificationsAsRead = () => {
+    router.post(
+        readNotifications.url(),
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                page.props.notifications = {
+                    ...notifications.value,
+                    unread_count: 0,
+                    items: notifications.value.items.map((notification) => ({
+                        ...notification,
+                        read_at: notification.read_at ?? new Date().toISOString(),
+                    })),
+                };
+            },
+        },
+    );
+};
+
+const appendNotification = (notification: BroadcastDirectMessageNotification) => {
+    const notificationId = notification.id ?? crypto.randomUUID();
+    const currentNotifications = notifications.value;
+
+    if (
+        currentNotifications.items.some(
+            (currentNotification) => currentNotification.id === notificationId,
+        )
+    ) {
+        return;
+    }
+
+    page.props.notifications = {
+        unread_count: currentNotifications.unread_count + 1,
+        items: [
+            {
+                id: notificationId,
+                type: notification.type,
+                title: notification.title,
+                body: notification.body,
+                sender_name: notification.sender_name,
+                read_at: null,
+                created_at: notification.created_at,
+                created_at_human: notification.created_at_human,
+            },
+            ...currentNotifications.items,
+        ].slice(0, 20),
+    };
+};
+
 const handleEscape = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
         closeDrawer();
+        closeNotifications();
     }
 };
 
 onMounted(() => {
     window.addEventListener('keydown', handleEscape);
+    window.Echo.private(`App.Models.User.${currentUserId}`).notification(
+        appendNotification,
+    );
 });
+
+watch(
+    () => page.url,
+    (url) => {
+        if (url.startsWith('/dms/')) {
+            activeTab.value = 'dms';
+        }
+    },
+);
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEscape);
+    window.Echo.leave(`App.Models.User.${currentUserId}`);
 });
 </script>
 
@@ -105,6 +198,78 @@ onBeforeUnmount(() => {
                     >
                         Padik
                     </Link>
+
+                    <div class="relative ml-auto">
+                        <button
+                            class="relative grid size-10 place-items-center rounded-full text-[#171d1e] transition-colors hover:bg-[#e4e9ea]"
+                            aria-label="Open notifications"
+                            :aria-expanded="areNotificationsOpen"
+                            aria-controls="notifications-menu"
+                            @click="areNotificationsOpen = !areNotificationsOpen"
+                        >
+                            <Bell class="size-5" />
+                            <span
+                                v-if="notifications.unread_count > 0"
+                                class="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-[#ba1a1a] px-1 text-[10px] leading-4 font-bold text-white"
+                            >
+                                {{ notifications.unread_count > 9 ? '9+' : notifications.unread_count }}
+                            </span>
+                        </button>
+
+                        <div
+                            v-if="areNotificationsOpen"
+                            id="notifications-menu"
+                            class="absolute top-12 right-0 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-[#bbc9cb] bg-white shadow-xl"
+                        >
+                            <div class="flex items-center justify-between gap-3 border-b border-[#bbc9cb]/60 px-4 py-3">
+                                <span class="text-sm font-bold text-[#171d1e]">
+                                    Notifications
+                                </span>
+                                <button
+                                    class="text-xs font-bold text-[#007681] transition-colors hover:text-[#006874] disabled:text-[#8a989b]"
+                                    :disabled="notifications.unread_count === 0"
+                                    @click="markNotificationsAsRead"
+                                >
+                                    Mark all as read
+                                </button>
+                            </div>
+
+                            <div class="chat-scroll max-h-96 overflow-y-auto py-1">
+                                <div
+                                    v-for="notification in notifications.items"
+                                    :key="notification.id"
+                                    class="border-b border-[#bbc9cb]/30 px-4 py-3 last:border-b-0"
+                                    :class="notification.read_at ? 'bg-white' : 'bg-[#006874]/5'"
+                                >
+                                    <div class="flex items-start justify-between gap-3">
+                                        <span class="min-w-0">
+                                            <span class="block truncate text-sm font-bold text-[#171d1e]">
+                                                {{ notification.sender_name ?? notification.title }}
+                                            </span>
+                                            <span class="mt-0.5 block line-clamp-2 text-xs leading-5 text-[#6c797c]">
+                                                {{ notification.body ?? 'Sent you a direct message.' }}
+                                            </span>
+                                        </span>
+                                        <span
+                                            v-if="!notification.read_at"
+                                            class="mt-1 size-2 shrink-0 rounded-full bg-[#007681]"
+                                            aria-label="Unread"
+                                        />
+                                    </div>
+                                    <span class="mt-2 block text-[11px] text-[#8a989b]">
+                                        {{ notification.created_at_human }}
+                                    </span>
+                                </div>
+
+                                <p
+                                    v-if="notifications.items.length === 0"
+                                    class="px-4 py-8 text-center text-sm text-[#6c797c]"
+                                >
+                                    No notifications yet
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <label class="relative block">
@@ -185,10 +350,16 @@ onBeforeUnmount(() => {
             </div>
 
             <div v-else class="chat-scroll flex-1 overflow-y-auto py-2">
-                <button
+                <Link
                     v-for="user in directMessageUsers"
                     :key="user.id"
-                    class="flex w-full cursor-pointer gap-3 border-l-4 border-transparent px-3 py-3 text-left transition-colors hover:bg-[#eff5f5]"
+                    :href="showDirectMessage(user.id)"
+                    class="flex w-full cursor-pointer gap-3 px-3 py-3 text-left transition-colors"
+                    :class="
+                        user.active
+                            ? 'border-l-4 border-[#007681] bg-[#006874]/5'
+                            : 'border-l-4 border-transparent hover:bg-[#eff5f5]'
+                    "
                 >
                     <span
                         class="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-white"
@@ -205,7 +376,7 @@ onBeforeUnmount(() => {
                             {{ user.preview }}
                         </span>
                     </span>
-                </button>
+                </Link>
 
                 <p
                     v-if="directMessageUsers.length === 0"

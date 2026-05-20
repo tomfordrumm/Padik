@@ -3,13 +3,14 @@ import { Head, useHttp, usePage } from '@inertiajs/vue3';
 import { MoreVertical, Paperclip, Search, Send, Smile } from 'lucide-vue-next';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { store as storeMessage } from '@/routes/rooms/messages';
-import type { Auth, RoomNavItem } from '@/types';
+import type { Auth, DirectMessageUserNavItem, RoomNavItem } from '@/types';
 
 type CurrentRoom = {
     id: number;
     title: string;
     slug: string;
     type: string;
+    direct_user_id?: number;
 };
 
 type Message = {
@@ -56,11 +57,20 @@ const updateCurrentRoomPreview = (body: string) => {
     }
 
     // Standalone HTTP sends do not refresh shared props, so keep navigation previews in sync locally.
-    // Reuse this pattern when direct messages get the same send-without-visit behavior.
+    if (props.currentRoom.type === 'direct' && props.currentRoom.direct_user_id) {
+        page.props.directMessageUsers = (
+            page.props.directMessageUsers as DirectMessageUserNavItem[]
+        ).map((user) =>
+            user.id === props.currentRoom?.direct_user_id
+                ? { ...user, last_message: body }
+                : user,
+        );
+
+        return;
+    }
+
     page.props.rooms = (page.props.rooms as RoomNavItem[]).map((room) =>
-        room.id === props.currentRoom?.id
-            ? { ...room, last_message: body }
-            : room,
+        room.id === props.currentRoom?.id ? { ...room, last_message: body } : room,
     );
 };
 
@@ -148,7 +158,13 @@ const submitMessage = async () => {
                     {{ currentRoom?.title ?? 'Dashboard' }}
                 </h1>
                 <span class="text-[11px] text-[#6c797c]">
-                    {{ currentRoom ? 'Room conversation' : 'Select a room' }}
+                    {{
+                        currentRoom?.type === 'direct'
+                            ? 'Direct message'
+                            : currentRoom
+                              ? 'Room conversation'
+                              : 'Select a room'
+                    }}
                 </span>
             </div>
 

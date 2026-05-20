@@ -1,6 +1,7 @@
 import type { Auth } from '@/types/auth';
 import type {
     DirectMessageUserNavItem,
+    NotificationNav,
     RoomNavItem,
 } from '@/types/navigation';
 
@@ -24,6 +25,7 @@ declare module '@inertiajs/core' {
             auth: Auth;
             rooms: RoomNavItem[];
             directMessageUsers: DirectMessageUserNavItem[];
+            notifications: NotificationNav;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

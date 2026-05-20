@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Resources\NotificationData;
 use App\Services\MessengerNavigation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -50,6 +51,17 @@ class HandleInertiaRequests extends Middleware
             'directMessageUsers' => fn () => $request->user()
                 ? $this->messengerNavigation->directMessageUsersFor($request->user())
                 : [],
+            'notifications' => fn () => $request->user()
+                ? [
+                    'unread_count' => $request->user()->unreadNotifications()->count(),
+                    'items' => $request->user()
+                        ->notifications()
+                        ->latest()
+                        ->limit(20)
+                        ->get()
+                        ->map(fn ($notification): array => NotificationData::fromNotification($notification)),
+                ]
+                : ['unread_count' => 0, 'items' => []],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

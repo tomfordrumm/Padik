@@ -27,3 +27,19 @@ export type DirectMessageUserNavItem = {
     name: string;
     last_message: string | null;
 };
+
+export type NotificationItem = {
+    id: string;
+    type: string;
+    title: string;
+    body: string | null;
+    sender_name: string | null;
+    read_at: string | null;
+    created_at: string;
+    created_at_human: string;
+};
+
+export type NotificationNav = {
+    unread_count: number;
+    items: NotificationItem[];
+};
