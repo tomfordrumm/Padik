@@ -40,10 +40,7 @@ const chats = computed<ChatPreview[]>(() =>
         initials: initials(room.title) || '#',
         color: roomColors[index % roomColors.length],
         time: room.unread_count > 0 ? `${room.unread_count} unread` : '',
-        preview:
-            room.type === 'general'
-                ? 'All workspace members'
-                : 'Room conversation',
+        preview: room.last_message ?? 'No messages yet',
         active: page.url === showRoom.url(room.slug),
     })),
 );
@@ -57,7 +54,7 @@ const directMessageUsers = computed<ChatPreview[]>(() =>
             initials: initials(user.name) || user.name[0]?.toUpperCase() || '?',
             color: roomColors[index % roomColors.length],
             time: '',
-            preview: user.email,
+            preview: user.last_message ?? 'Start a conversation',
         }),
     ),
 );

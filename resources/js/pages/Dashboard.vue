@@ -3,7 +3,7 @@ import { Head, useHttp, usePage } from '@inertiajs/vue3';
 import { MoreVertical, Paperclip, Search, Send, Smile } from 'lucide-vue-next';
 import { nextTick, ref, watch } from 'vue';
 import { store as storeMessage } from '@/routes/rooms/messages';
-import type { Auth } from '@/types';
+import type { Auth, RoomNavItem } from '@/types';
 
 type CurrentRoom = {
     id: number;
@@ -46,6 +46,20 @@ const scrollMessagesToBottom = async () => {
     }
 };
 
+const updateCurrentRoomPreview = (body: string) => {
+    if (!props.currentRoom) {
+        return;
+    }
+
+    // Standalone HTTP sends do not refresh shared props, so keep navigation previews in sync locally.
+    // Reuse this pattern when direct messages get the same send-without-visit behavior.
+    page.props.rooms = (page.props.rooms as RoomNavItem[]).map((room) =>
+        room.id === props.currentRoom?.id
+            ? { ...room, last_message: body }
+            : room,
+    );
+};
+
 watch(
     () => props.messages,
     (messages) => {
@@ -73,6 +87,7 @@ const submitMessage = async () => {
             const { message } = data as { message: Message };
 
             visibleMessages.value = [...visibleMessages.value, message];
+            updateCurrentRoomPreview(message.body);
             messageForm.reset();
             void scrollMessagesToBottom();
         },

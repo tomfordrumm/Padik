@@ -19,10 +19,11 @@ export type RoomNavItem = {
     slug: string;
     type: string;
     unread_count: number;
+    last_message: string | null;
 };
 
 export type DirectMessageUserNavItem = {
     id: number;
     name: string;
-    email: string;
+    last_message: string | null;
 };

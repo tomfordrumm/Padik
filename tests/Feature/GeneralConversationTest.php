@@ -38,6 +38,13 @@ class GeneralConversationTest extends TestCase
         $user = User::factory()->create();
         $otherUser = User::factory()->create();
         $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $general = Conversation::query()->where('slug', 'general')->firstOrFail();
+
+        Message::factory()->create([
+            'conversation_id' => $general->id,
+            'user_id' => $user->id,
+            'body' => 'Latest room message.',
+        ]);
 
         $this->actingAs($user)
             ->get(route('dashboard'))
@@ -47,8 +54,49 @@ class GeneralConversationTest extends TestCase
                 ->where('rooms.0.title', 'General')
                 ->where('rooms.0.slug', 'general')
                 ->where('rooms.0.type', ConversationType::General->value)
+                ->where('rooms.0.last_message', 'Latest room message.')
                 ->has('directMessageUsers', 1)
                 ->where('directMessageUsers.0.id', $otherUser->id)
+            );
+    }
+
+    public function test_authenticated_layout_shares_latest_direct_message_for_each_user(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create(['name' => 'Alice']);
+        $newUser = User::factory()->create(['name' => 'Bob']);
+
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Direct,
+            'title' => null,
+            'created_by_id' => $user->id,
+        ]);
+        $conversation->users()->attach([$user->id, $otherUser->id]);
+
+        Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+            'body' => 'Older direct message.',
+            'created_at' => now()->subMinute(),
+        ]);
+        Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $otherUser->id,
+            'body' => 'Latest direct message.',
+            'created_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('directMessageUsers', 2)
+                ->where('directMessageUsers.0.id', $otherUser->id)
+                ->where('directMessageUsers.0.name', 'Alice')
+                ->where('directMessageUsers.0.last_message', 'Latest direct message.')
+                ->where('directMessageUsers.1.id', $newUser->id)
+                ->where('directMessageUsers.1.name', 'Bob')
+                ->where('directMessageUsers.1.last_message', null)
             );
     }
 
