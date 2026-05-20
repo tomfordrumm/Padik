@@ -1,0 +1,86 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    image: padik-laravel:latest
+    working_dir: /var/www/html
+    command: sh -lc "touch database/database.sqlite && php-fpm"
+    volumes:
+      - .:/var/www/html
+      - vendor:/var/www/html/vendor
+      - node_modules:/var/www/html/node_modules
+      - public_build:/var/www/html/public/build
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html:ro
+      - public_build:/var/www/html/public/build:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+      - reverb
+    restart: unless-stopped
+
+  reverb:
+    image: padik-laravel:latest
+    working_dir: /var/www/html
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/var/www/html
+      - vendor:/var/www/html/vendor
+      - node_modules:/var/www/html/node_modules
+      - public_build:/var/www/html/public/build
+    depends_on:
+      - app
+      - redis
+    restart: unless-stopped
+
+  queue:
+    image: padik-laravel:latest
+    working_dir: /var/www/html
+    command: php artisan queue:work redis --tries=3 --timeout=90
+    volumes:
+      - .:/var/www/html
+      - vendor:/var/www/html/vendor
+      - node_modules:/var/www/html/node_modules
+      - public_build:/var/www/html/public/build
+    depends_on:
+      - app
+      - redis
+    restart: unless-stopped
+
+  scheduler:
+    image: padik-laravel:latest
+    working_dir: /var/www/html
+    command: php artisan schedule:work
+    volumes:
+      - .:/var/www/html
+      - vendor:/var/www/html/vendor
+      - node_modules:/var/www/html/node_modules
+      - public_build:/var/www/html/public/build
+    depends_on:
+      - app
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  vendor:
+  node_modules:
+  public_build:

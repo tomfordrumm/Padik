@@ -141,6 +141,27 @@ class GeneralConversationTest extends TestCase
         ]);
     }
 
+    public function test_users_can_send_messages_with_json_response(): void
+    {
+        $user = User::factory()->create();
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+
+        $this->actingAs($user)
+            ->postJson('/r/general/messages', [
+                'body' => 'Posted without a page visit.',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('message.sender_id', $user->id)
+            ->assertJsonPath('message.author', $user->name)
+            ->assertJsonPath('message.body', 'Posted without a page visit.')
+            ->assertJsonPath('message.own', true);
+
+        $this->assertDatabaseHas('messages', [
+            'user_id' => $user->id,
+            'body' => 'Posted without a page visit.',
+        ]);
+    }
+
     public function test_users_cannot_send_messages_to_rooms_they_do_not_belong_to(): void
     {
         $user = User::factory()->create();

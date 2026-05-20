@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, useHttp, usePage } from '@inertiajs/vue3';
 import { MoreVertical, Paperclip, Search, Send, Smile } from 'lucide-vue-next';
+import { nextTick, ref, watch } from 'vue';
 import { store as storeMessage } from '@/routes/rooms/messages';
 import type { Auth } from '@/types';
 
@@ -25,24 +26,56 @@ const props = defineProps<{
     messages?: Message[];
 }>();
 
-const messageForm = useForm({
+const messageForm = useHttp({
     body: '',
 });
 
 const page = usePage();
+const visibleMessages = ref<Message[]>(props.messages ?? []);
+const messagesScroll = ref<HTMLElement | null>(null);
 
 const isOwnMessage = (message: Message) =>
     message.own === true ||
     message.sender_id === (page.props.auth as Auth).user.id;
 
-const submitMessage = () => {
+const scrollMessagesToBottom = async () => {
+    await nextTick();
+
+    if (messagesScroll.value) {
+        messagesScroll.value.scrollTop = messagesScroll.value.scrollHeight;
+    }
+};
+
+watch(
+    () => props.messages,
+    (messages) => {
+        visibleMessages.value = messages ?? [];
+        void scrollMessagesToBottom();
+    },
+    { immediate: true },
+);
+
+const submitMessage = async () => {
     if (!props.currentRoom || messageForm.processing) {
         return;
     }
 
-    messageForm.post(storeMessage.url(props.currentRoom.slug), {
-        preserveScroll: true,
-        onSuccess: () => messageForm.reset(),
+    const body = messageForm.body.trim();
+
+    if (!body) {
+        return;
+    }
+
+    messageForm.body = body;
+
+    await messageForm.post(storeMessage.url(props.currentRoom.slug), {
+        onSuccess: (data) => {
+            const { message } = data as { message: Message };
+
+            visibleMessages.value = [...visibleMessages.value, message];
+            messageForm.reset();
+            void scrollMessagesToBottom();
+        },
     });
 };
 </script>
@@ -79,18 +112,18 @@ const submitMessage = () => {
             </div>
         </header>
 
-        <div class="chat-scroll flex-1 overflow-y-auto px-6 py-8">
+        <div ref="messagesScroll" class="chat-scroll flex-1 overflow-y-auto px-6 py-8">
             <div v-if="currentRoom" class="mb-9 flex justify-center">
                 <span
                     class="rounded-full bg-[#dee3e4] px-4 py-1.5 text-[11px] font-bold text-[#6c797c]"
                 >
-                    {{ messages?.length ? 'Messages' : 'No messages yet' }}
+                    {{ visibleMessages.length ? 'Messages' : 'No messages yet' }}
                 </span>
             </div>
 
-            <div v-if="currentRoom && messages?.length" class="space-y-8">
+            <div v-if="currentRoom && visibleMessages.length" class="space-y-8">
                 <article
-                    v-for="message in messages"
+                    v-for="message in visibleMessages"
                     :key="message.id"
                     class="flex gap-4"
                     :class="isOwnMessage(message) ? 'justify-end' : 'justify-start'"
@@ -164,6 +197,12 @@ const submitMessage = () => {
                         placeholder="Write a message..."
                         rows="1"
                     />
+                    <p
+                        v-if="messageForm.errors.body"
+                        class="mt-1 px-2 text-xs text-red-600"
+                    >
+                        {{ messageForm.errors.body }}
+                    </p>
                     <button
                         type="button"
                         class="absolute right-3 bottom-2.5 grid size-8 place-items-center rounded-full text-[#6c797c] transition-colors hover:text-[#007681]"
