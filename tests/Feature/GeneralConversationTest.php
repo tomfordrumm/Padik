@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Actions\Conversations\EnsureGeneralConversation;
 use App\Enums\ConversationType;
+use App\Events\RoomMessageSent;
+use App\Http\Resources\MessageData;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -172,6 +175,19 @@ class GeneralConversationTest extends TestCase
             );
     }
 
+    public function test_message_payload_marks_own_relative_to_the_viewer(): void
+    {
+        $sender = User::factory()->create();
+        $viewer = User::factory()->create();
+        $message = Message::factory()->create([
+            'user_id' => $sender->id,
+        ]);
+
+        $this->assertTrue(MessageData::fromMessage($message, $sender)['own']);
+        $this->assertFalse(MessageData::fromMessage($message, $viewer)['own']);
+        $this->assertFalse(MessageData::fromMessage($message)['own']);
+    }
+
     public function test_users_can_send_messages_to_rooms_they_belong_to(): void
     {
         $user = User::factory()->create();
@@ -208,6 +224,47 @@ class GeneralConversationTest extends TestCase
             'user_id' => $user->id,
             'body' => 'Posted without a page visit.',
         ]);
+    }
+
+    public function test_sending_a_room_message_broadcasts_it_to_room_members(): void
+    {
+        Event::fake([RoomMessageSent::class]);
+
+        $user = User::factory()->create();
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $general = Conversation::query()->where('slug', 'general')->firstOrFail();
+
+        $this->actingAs($user)
+            ->postJson('/r/general/messages', [
+                'body' => 'Broadcast me.',
+            ])
+            ->assertCreated();
+
+        Event::assertDispatched(
+            RoomMessageSent::class,
+            fn (RoomMessageSent $event): bool => $event->message->conversation_id === $general->id
+                && $event->message->user_id === $user->id
+                && $event->message->body === 'Broadcast me.'
+        );
+    }
+
+    public function test_users_cannot_authorize_room_broadcast_channels_they_do_not_belong_to(): void
+    {
+        config(['broadcasting.default' => 'reverb']);
+
+        $member = User::factory()->create();
+        $outsider = User::factory()->create();
+        $room = Conversation::factory()->create([
+            'created_by_id' => $member->id,
+        ]);
+        $room->users()->attach($member->id);
+
+        $this->actingAs($outsider)
+            ->post('/broadcasting/auth', [
+                'socket_id' => '123.456',
+                'channel_name' => "private-rooms.{$room->id}",
+            ])
+            ->assertForbidden();
     }
 
     public function test_users_cannot_send_messages_to_rooms_they_do_not_belong_to(): void

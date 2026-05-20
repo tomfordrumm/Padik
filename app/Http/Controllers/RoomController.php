@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\MessageData;
 use App\Models\Conversation;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -27,14 +28,7 @@ class RoomController extends Controller
                 ->with('user:id,name,email')
                 ->oldest()
                 ->get()
-                ->map(fn ($message): array => [
-                    'id' => $message->id,
-                    'sender_id' => $message->user_id,
-                    'author' => $message->user->name,
-                    'body' => $message->body,
-                    'time' => $message->created_at->format('H:i'),
-                    'own' => (int) $message->user_id === (int) $request->user()->id,
-                ]),
+                ->map(fn ($message): array => MessageData::fromMessage($message, $request->user())),
         ]);
     }
 }

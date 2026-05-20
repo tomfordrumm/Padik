@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\RoomMessageSent;
 use App\Http\Requests\StoreRoomMessageRequest;
+use App\Http\Resources\MessageData;
 use App\Models\Conversation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -16,16 +18,11 @@ class RoomMessageController extends Controller
             'body' => $request->validated('body'),
         ]);
 
+        broadcast(new RoomMessageSent($message))->toOthers();
+
         if ($request->expectsJson()) {
             return response()->json([
-                'message' => [
-                    'id' => $message->id,
-                    'sender_id' => $message->user_id,
-                    'author' => $request->user()->name,
-                    'body' => $message->body,
-                    'time' => $message->created_at->format('H:i'),
-                    'own' => true,
-                ],
+                'message' => MessageData::fromMessage($message, $request->user()),
             ], 201);
         }
 

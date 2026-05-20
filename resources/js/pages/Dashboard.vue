@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, useHttp, usePage } from '@inertiajs/vue3';
 import { MoreVertical, Paperclip, Search, Send, Smile } from 'lucide-vue-next';
-import { nextTick, ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { store as storeMessage } from '@/routes/rooms/messages';
 import type { Auth, RoomNavItem } from '@/types';
 
@@ -31,12 +31,16 @@ const messageForm = useHttp({
 });
 
 const page = usePage();
-const visibleMessages = ref<Message[]>(props.messages ?? []);
+const currentUserId = Number((page.props.auth as Auth).user.id);
+const normalizeMessage = (message: Message): Message => ({
+    ...message,
+    own: Number(message.sender_id) === currentUserId,
+});
+
+const visibleMessages = ref<Message[]>((props.messages ?? []).map(normalizeMessage));
 const messagesScroll = ref<HTMLElement | null>(null);
 
-const isOwnMessage = (message: Message) =>
-    message.own === true ||
-    message.sender_id === (page.props.auth as Auth).user.id;
+const isOwnMessage = (message: Message) => message.own === true;
 
 const scrollMessagesToBottom = async () => {
     await nextTick();
@@ -60,14 +64,53 @@ const updateCurrentRoomPreview = (body: string) => {
     );
 };
 
+const appendVisibleMessage = (message: Message) => {
+    if (visibleMessages.value.some((visibleMessage) => visibleMessage.id === message.id)) {
+        return;
+    }
+
+    const normalizedMessage = normalizeMessage(message);
+
+    visibleMessages.value = [...visibleMessages.value, normalizedMessage];
+    updateCurrentRoomPreview(normalizedMessage.body);
+    void scrollMessagesToBottom();
+};
+
 watch(
     () => props.messages,
     (messages) => {
-        visibleMessages.value = messages ?? [];
+        visibleMessages.value = (messages ?? []).map(normalizeMessage);
         void scrollMessagesToBottom();
     },
     { immediate: true },
 );
+
+watch(
+    () => props.currentRoom?.id,
+    (roomId, previousRoomId) => {
+        if (previousRoomId) {
+            window.Echo.leave(`rooms.${previousRoomId}`);
+        }
+
+        if (!roomId) {
+            return;
+        }
+
+        window.Echo.private(`rooms.${roomId}`).listen(
+            '.RoomMessageSent',
+            (event: { message: Message }) => {
+                appendVisibleMessage(event.message);
+            },
+        );
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(() => {
+    if (props.currentRoom?.id) {
+        window.Echo.leave(`rooms.${props.currentRoom.id}`);
+    }
+});
 
 const submitMessage = async () => {
     if (!props.currentRoom || messageForm.processing) {
@@ -86,10 +129,8 @@ const submitMessage = async () => {
         onSuccess: (data) => {
             const { message } = data as { message: Message };
 
-            visibleMessages.value = [...visibleMessages.value, message];
-            updateCurrentRoomPreview(message.body);
+            appendVisibleMessage(message);
             messageForm.reset();
-            void scrollMessagesToBottom();
         },
     });
 };
