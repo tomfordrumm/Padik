@@ -44,10 +44,16 @@ class MessengerNavigation
     }
 
     /**
-     * @return Collection<int, array{id: int, name: string, last_message: string|null}>
+     * @return Collection<int, array{id: int, name: string, unread_count: int, last_message: string|null}>
      */
     public function directMessageUsersFor(User $user): Collection
     {
+        // @TODO this is potential issue. When we will use other type of notifications not only DMs
+        $unreadDirectNotifications = $user
+            ->unreadNotifications()
+            ->get()
+            ->countBy(fn ($notification): int|string|null => $notification->data['sender_id'] ?? null);
+
         return User::query()
             ->select(['users.id', 'users.name'])
             ->whereKeyNot($user->id)
@@ -64,12 +70,25 @@ class MessengerNavigation
                     ->orderByDesc('messages.created_at')
                     ->orderByDesc('messages.id')
                     ->limit(1),
+                'unread_count' => Conversation::query()
+                    ->select('current_participant.unread_count')
+                    ->join('conversation_participants as current_participant', 'current_participant.conversation_id', '=', 'conversations.id')
+                    ->join('conversation_participants as other_participant', 'other_participant.conversation_id', '=', 'conversations.id')
+                    ->where('conversations.type', ConversationType::Direct->value)
+                    ->where('conversations.status', ConversationStatus::Active->value)
+                    ->where('current_participant.user_id', $user->id)
+                    ->whereColumn('other_participant.user_id', 'users.id')
+                    ->limit(1),
             ])
             ->orderBy('name')
             ->get()
             ->map(fn (User $directMessageUser): array => [
                 'id' => $directMessageUser->id,
                 'name' => $directMessageUser->name,
+                'unread_count' => max(
+                    $directMessageUser->unread_count ?? 0,
+                    $unreadDirectNotifications->get($directMessageUser->id, 0),
+                ),
                 'last_message' => $directMessageUser->last_direct_message,
             ])
             ->values();

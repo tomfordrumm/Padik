@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Enums\ConversationType;
 use App\Http\Resources\MessageData;
 use App\Models\Message;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -34,12 +35,22 @@ class RoomMessageSent implements ShouldBroadcastNow
     }
 
     /**
-     * @return array{message: array{id: int, sender_id: int, author: string, body: string|null, time: string, own: bool}}
+     * @return array{message: array{id: int, sender_id: int, author: string, body: string|null, time: string, own: bool}, conversation: array{id: int, slug: string, type: string, direct_user_id: int|null}}
      */
     public function broadcastWith(): array
     {
+        $this->message->loadMissing('conversation');
+
         return [
             'message' => MessageData::fromMessage($this->message),
+            'conversation' => [
+                'id' => $this->message->conversation->id,
+                'slug' => $this->message->conversation->slug,
+                'type' => $this->message->conversation->type->value,
+                'direct_user_id' => $this->message->conversation->type === ConversationType::Direct
+                    ? $this->message->user_id
+                    : null,
+            ],
         ];
     }
 }

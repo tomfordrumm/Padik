@@ -100,13 +100,40 @@ class DirectMessageConversationTest extends TestCase
             ])
             ->assertCreated()
             ->assertJsonPath('message.body', 'Private reply.')
-            ->assertJsonPath('message.own', true);
+            ->assertJsonPath('message.own', true)
+            ->assertJsonPath('conversation.id', $conversation->id)
+            ->assertJsonPath('conversation.slug', 'dm-thread')
+            ->assertJsonPath('conversation.type', ConversationType::Direct->value)
+            ->assertJsonPath('conversation.direct_user_id', $recipient->id);
 
         Event::assertDispatched(
             RoomMessageSent::class,
             fn (RoomMessageSent $event): bool => $event->message->conversation_id === $conversation->id
                 && $event->message->body === 'Private reply.'
+                && $event->broadcastWith()['conversation']['id'] === $conversation->id
+                && $event->broadcastWith()['conversation']['slug'] === 'dm-thread'
+                && $event->broadcastWith()['conversation']['type'] === ConversationType::Direct->value
+                && $event->broadcastWith()['conversation']['direct_user_id'] === $user->id
         );
+
+        $this->assertDatabaseHas('conversation_participants', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $recipient->id,
+            'unread_count' => 1,
+        ]);
+
+        $this->actingAs($recipient)
+            ->get(route('direct-messages.show', $user))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('directMessageUsers.0.unread_count', 0)
+            );
+
+        $this->assertDatabaseHas('conversation_participants', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $recipient->id,
+            'unread_count' => 0,
+        ]);
     }
 
     public function test_sending_a_direct_message_creates_a_database_notification_for_the_recipient(): void
@@ -233,6 +260,40 @@ class DirectMessageConversationTest extends TestCase
                 ->where('data->sender_id', $otherSender->id)
                 ->count()
         );
+    }
+
+    public function test_direct_message_navigation_uses_unread_notifications_as_unread_count(): void
+    {
+        $user = User::factory()->create();
+        $sender = User::factory()->create(['name' => 'Alice']);
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Direct,
+            'title' => null,
+            'slug' => 'dm-notification-fallback',
+            'created_by_id' => $sender->id,
+        ]);
+        $conversation->users()->attach([$user->id, $sender->id]);
+        $message = Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $sender->id,
+            'body' => 'Unread notification body.',
+        ]);
+
+        $user->notify(new DirectMessageReceived($message));
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('directMessageUsers.0.id', $sender->id)
+                ->where('directMessageUsers.0.unread_count', 1)
+            );
+
+        $this->actingAs($user)
+            ->get(route('direct-messages.show', $sender))
+            ->assertOk();
+
+        $this->assertSame(0, $user->fresh()->unreadNotifications()->count());
     }
 
     public function test_users_cannot_open_a_direct_message_with_themselves(): void

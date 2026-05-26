@@ -25,6 +25,7 @@ export type RoomNavItem = {
 export type DirectMessageUserNavItem = {
     id: number;
     name: string;
+    unread_count: number;
     last_message: string | null;
 };
 

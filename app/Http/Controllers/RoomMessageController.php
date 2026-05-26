@@ -21,6 +21,10 @@ class RoomMessageController extends Controller
             'body' => $request->validated('body'),
         ]);
 
+        $conversation->participants()
+            ->where('user_id', '!=', $request->user()->id)
+            ->increment('unread_count');
+
         broadcast(new RoomMessageSent($message))->toOthers();
 
         if ($conversation->type === ConversationType::Direct) {
@@ -33,6 +37,16 @@ class RoomMessageController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'message' => MessageData::fromMessage($message, $request->user()),
+                'conversation' => [
+                    'id' => $conversation->id,
+                    'slug' => $conversation->slug,
+                    'type' => $conversation->type->value,
+                    'direct_user_id' => $conversation->type === ConversationType::Direct
+                        ? $conversation->users()
+                            ->whereKeyNot($request->user()->id)
+                            ->value('users.id')
+                        : null,
+                ],
             ], 201);
         }
 

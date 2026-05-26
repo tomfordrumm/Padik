@@ -212,6 +212,7 @@ class GeneralConversationTest extends TestCase
     {
         $user = User::factory()->create();
         $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $general = Conversation::query()->where('slug', 'general')->firstOrFail();
 
         $this->actingAs($user)
             ->postJson('/r/general/messages', [
@@ -221,7 +222,11 @@ class GeneralConversationTest extends TestCase
             ->assertJsonPath('message.sender_id', $user->id)
             ->assertJsonPath('message.author', $user->name)
             ->assertJsonPath('message.body', 'Posted without a page visit.')
-            ->assertJsonPath('message.own', true);
+            ->assertJsonPath('message.own', true)
+            ->assertJsonPath('conversation.id', $general->id)
+            ->assertJsonPath('conversation.slug', 'general')
+            ->assertJsonPath('conversation.type', ConversationType::General->value)
+            ->assertJsonPath('conversation.direct_user_id', null);
 
         $this->assertDatabaseHas('messages', [
             'user_id' => $user->id,
@@ -234,7 +239,9 @@ class GeneralConversationTest extends TestCase
         Event::fake([RoomMessageSent::class]);
 
         $user = User::factory()->create();
+        $recipient = User::factory()->create();
         $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($recipient);
         $general = Conversation::query()->where('slug', 'general')->firstOrFail();
 
         $this->actingAs($user)
@@ -248,7 +255,27 @@ class GeneralConversationTest extends TestCase
             fn (RoomMessageSent $event): bool => $event->message->conversation_id === $general->id
                 && $event->message->user_id === $user->id
                 && $event->message->body === 'Broadcast me.'
+                && $event->broadcastWith()['conversation']['id'] === $general->id
+                && $event->broadcastWith()['conversation']['slug'] === 'general'
+                && $event->broadcastWith()['conversation']['type'] === ConversationType::General->value
+                && $event->broadcastWith()['conversation']['direct_user_id'] === null
         );
+
+        $this->assertDatabaseHas('conversation_participants', [
+            'conversation_id' => $general->id,
+            'user_id' => $recipient->id,
+            'unread_count' => 1,
+        ]);
+
+        $this->actingAs($recipient)
+            ->get(route('rooms.show', $general))
+            ->assertOk();
+
+        $this->assertDatabaseHas('conversation_participants', [
+            'conversation_id' => $general->id,
+            'user_id' => $recipient->id,
+            'unread_count' => 0,
+        ]);
     }
 
     public function test_users_cannot_authorize_room_broadcast_channels_they_do_not_belong_to(): void

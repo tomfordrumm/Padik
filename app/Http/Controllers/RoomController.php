@@ -19,6 +19,13 @@ class RoomController extends Controller
             404,
         );
 
+        $conversation->participants()
+            ->where('user_id', $request->user()->id)
+            ->update([
+                'unread_count' => 0,
+                'last_read_at' => now(),
+            ]);
+
         return Inertia::render('Dashboard', [
             'currentRoom' => [
                 'id' => $conversation->id,

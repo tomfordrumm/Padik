@@ -2,25 +2,14 @@
 import { Head, useHttp, usePage } from '@inertiajs/vue3';
 import { MoreVertical, Paperclip, Search, Send, Smile } from 'lucide-vue-next';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import {
+    type CurrentRoom,
+    type Message,
+    type MessagePayload,
+    useMessengerStore,
+} from '@/composables/useMessengerStore';
 import { store as storeMessage } from '@/routes/rooms/messages';
-import type { Auth, DirectMessageUserNavItem, RoomNavItem } from '@/types';
-
-type CurrentRoom = {
-    id: number;
-    title: string;
-    slug: string;
-    type: string;
-    direct_user_id?: number;
-};
-
-type Message = {
-    id: number;
-    sender_id: number;
-    author: string;
-    body: string;
-    time: string;
-    own?: boolean;
-};
+import type { Auth } from '@/types';
 
 const props = defineProps<{
     currentRoom?: CurrentRoom;
@@ -33,12 +22,8 @@ const messageForm = useHttp({
 
 const page = usePage();
 const currentUserId = Number((page.props.auth as Auth).user.id);
-const normalizeMessage = (message: Message): Message => ({
-    ...message,
-    own: Number(message.sender_id) === currentUserId,
-});
-
-const visibleMessages = ref<Message[]>((props.messages ?? []).map(normalizeMessage));
+const messenger = useMessengerStore(currentUserId);
+const visibleMessages = messenger.messages;
 const messagesScroll = ref<HTMLElement | null>(null);
 
 const isOwnMessage = (message: Message) => message.own === true;
@@ -51,65 +36,35 @@ const scrollMessagesToBottom = async () => {
     }
 };
 
-const updateCurrentRoomPreview = (body: string) => {
-    if (!props.currentRoom) {
-        return;
-    }
-
-    // Standalone HTTP sends do not refresh shared props, so keep navigation previews in sync locally.
-    if (props.currentRoom.type === 'direct' && props.currentRoom.direct_user_id) {
-        page.props.directMessageUsers = (
-            page.props.directMessageUsers as DirectMessageUserNavItem[]
-        ).map((user) =>
-            user.id === props.currentRoom?.direct_user_id
-                ? { ...user, last_message: body }
-                : user,
-        );
-
-        return;
-    }
-
-    page.props.rooms = (page.props.rooms as RoomNavItem[]).map((room) =>
-        room.id === props.currentRoom?.id ? { ...room, last_message: body } : room,
-    );
-};
-
-const appendVisibleMessage = (message: Message) => {
-    if (visibleMessages.value.some((visibleMessage) => visibleMessage.id === message.id)) {
-        return;
-    }
-
-    const normalizedMessage = normalizeMessage(message);
-
-    visibleMessages.value = [...visibleMessages.value, normalizedMessage];
-    updateCurrentRoomPreview(normalizedMessage.body);
+const applyMessage = (payload: MessagePayload) => {
+    messenger.applyMessage(payload);
     void scrollMessagesToBottom();
 };
 
 watch(
-    () => props.messages,
-    (messages) => {
-        visibleMessages.value = (messages ?? []).map(normalizeMessage);
+    () => [props.currentRoom, props.messages] as const,
+    ([currentRoom, messages]) => {
+        messenger.syncCurrentConversation(currentRoom, messages);
         void scrollMessagesToBottom();
     },
     { immediate: true },
 );
 
 watch(
-    () => props.currentRoom?.id,
-    (roomId, previousRoomId) => {
-        if (previousRoomId) {
-            window.Echo.leave(`rooms.${previousRoomId}`);
+    () => props.currentRoom,
+    (room, previousRoom) => {
+        if (previousRoom?.type === 'direct') {
+            window.Echo.leave(`rooms.${previousRoom.id}`);
         }
 
-        if (!roomId) {
+        if (!room || room.type !== 'direct') {
             return;
         }
 
-        window.Echo.private(`rooms.${roomId}`).listen(
+        window.Echo.private(`rooms.${room.id}`).listen(
             '.RoomMessageSent',
-            (event: { message: Message }) => {
-                appendVisibleMessage(event.message);
+            (event: MessagePayload) => {
+                applyMessage(event);
             },
         );
     },
@@ -117,7 +72,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
-    if (props.currentRoom?.id) {
+    if (props.currentRoom?.type === 'direct') {
         window.Echo.leave(`rooms.${props.currentRoom.id}`);
     }
 });
@@ -137,9 +92,7 @@ const submitMessage = async () => {
 
     await messageForm.post(storeMessage.url(props.currentRoom.slug), {
         onSuccess: (data) => {
-            const { message } = data as { message: Message };
-
-            appendVisibleMessage(message);
+            applyMessage(data as MessagePayload);
             messageForm.reset();
         },
     });

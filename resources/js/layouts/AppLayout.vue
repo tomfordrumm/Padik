@@ -3,6 +3,10 @@ import { Link, router, usePage } from '@inertiajs/vue3';
 import { Bell, LogOut, Menu, Search, User, X } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
+import {
+    type MessagePayload,
+    useMessengerStore,
+} from '@/composables/useMessengerStore';
 import { dashboard, logout } from '@/routes';
 import { show as showDirectMessage } from '@/routes/direct-messages';
 import { read as readNotifications } from '@/routes/notifications';
@@ -25,11 +29,13 @@ type ChatPreview = {
     color: string;
     time: string;
     preview: string;
+    unread_count: number;
     active?: boolean;
 };
 
 const page = usePage();
 const currentUserId = Number((page.props.auth as Auth).user.id);
+const messenger = useMessengerStore(currentUserId);
 const activeTab = ref<'rooms' | 'dms'>(
     page.url.startsWith('/dms/') ? 'dms' : 'rooms',
 );
@@ -47,7 +53,7 @@ const initials = (title: string) =>
         .join('');
 
 const chats = computed<ChatPreview[]>(() =>
-    (page.props.rooms as RoomNavItem[]).map((room, index) => ({
+    messenger.rooms.value.map((room, index) => ({
         id: room.id,
         slug: room.slug,
         name: room.title,
@@ -55,31 +61,27 @@ const chats = computed<ChatPreview[]>(() =>
         color: roomColors[index % roomColors.length],
         time: room.unread_count > 0 ? `${room.unread_count} unread` : '',
         preview: room.last_message ?? 'No messages yet',
+        unread_count: room.unread_count,
         active: page.url === showRoom.url(room.slug),
     })),
 );
 
 const directMessageUsers = computed<ChatPreview[]>(() =>
-    (page.props.directMessageUsers as DirectMessageUserNavItem[]).map(
-        (user, index) => ({
-            id: user.id,
-            slug: user.id.toString(),
-            name: user.name,
-            initials: initials(user.name) || user.name[0]?.toUpperCase() || '?',
-            color: roomColors[index % roomColors.length],
-            time: '',
-            preview: user.last_message ?? 'Start a conversation',
-            active: page.url === showDirectMessage.url(user.id),
-        }),
-    ),
+    messenger.directMessageUsers.value.map((user, index) => ({
+        id: user.id,
+        slug: user.id.toString(),
+        name: user.name,
+        initials: initials(user.name) || user.name[0]?.toUpperCase() || '?',
+        color: roomColors[index % roomColors.length],
+        time: user.unread_count > 0 ? `${user.unread_count} unread` : '',
+        preview: user.last_message ?? 'Start a conversation',
+        unread_count: user.unread_count,
+        active: page.url === showDirectMessage.url(user.id),
+    })),
 );
 
 const notifications = computed<NotificationNav>(
-    () =>
-        (page.props.notifications as NotificationNav) ?? {
-            unread_count: 0,
-            items: [],
-        },
+    () => messenger.notifications.value,
 );
 
 type BroadcastDirectMessageNotification = NotificationItem & {
@@ -103,14 +105,7 @@ const markNotificationsAsRead = () => {
         {
             preserveScroll: true,
             onSuccess: () => {
-                page.props.notifications = {
-                    ...notifications.value,
-                    unread_count: 0,
-                    items: notifications.value.items.map((notification) => ({
-                        ...notification,
-                        read_at: notification.read_at ?? new Date().toISOString(),
-                    })),
-                };
+                messenger.markNotificationsRead();
             },
         },
     );
@@ -131,30 +126,15 @@ const openNotification = (notification: NotificationItem) => {
         return;
     }
 
+    const senderId = notification.sender_id;
+
     router.post(
-        readNotificationsFromSender.url(notification.sender_id),
+        readNotificationsFromSender.url(senderId),
         {},
         {
             preserveScroll: true,
             onSuccess: () => {
-                const readAt = new Date().toISOString();
-
-                page.props.notifications = {
-                    ...notifications.value,
-                    unread_count: notifications.value.items.filter(
-                        (currentNotification) =>
-                            !currentNotification.read_at &&
-                            currentNotification.sender_id !== notification.sender_id,
-                    ).length,
-                    items: notifications.value.items.map((currentNotification) =>
-                        currentNotification.sender_id === notification.sender_id
-                            ? {
-                                  ...currentNotification,
-                                  read_at: currentNotification.read_at ?? readAt,
-                              }
-                            : currentNotification,
-                    ),
-                };
+                messenger.markSenderNotificationsRead(senderId);
 
                 router.visit(actionUrl);
             },
@@ -174,24 +154,18 @@ const appendNotification = (notification: BroadcastDirectMessageNotification) =>
         return;
     }
 
-    page.props.notifications = {
-        unread_count: currentNotifications.unread_count + 1,
-        items: [
-            {
-                id: notificationId,
-                type: notification.type,
-                title: notification.title,
-                body: notification.body,
-                sender_id: notification.sender_id,
-                sender_name: notification.sender_name,
-                action_url: notification.action_url,
-                read_at: null,
-                created_at: notification.created_at,
-                created_at_human: notification.created_at_human,
-            },
-            ...currentNotifications.items,
-        ].slice(0, 20),
-    };
+    messenger.appendNotification({
+        id: notificationId,
+        type: notification.type,
+        title: notification.title,
+        body: notification.body,
+        sender_id: notification.sender_id,
+        sender_name: notification.sender_name,
+        action_url: notification.action_url,
+        read_at: null,
+        created_at: notification.created_at,
+        created_at_human: notification.created_at_human,
+    });
 };
 
 const handleEscape = (event: KeyboardEvent) => {
@@ -228,6 +202,43 @@ onMounted(() => {
 });
 
 watch(
+    () => [
+        page.props.rooms,
+        page.props.directMessageUsers,
+        page.props.notifications,
+    ],
+    ([rooms, users, currentNotifications]) => {
+        messenger.syncNavigation(
+            rooms as RoomNavItem[],
+            users as DirectMessageUserNavItem[],
+            currentNotifications as NotificationNav,
+        );
+    },
+    { immediate: true },
+);
+
+watch(
+    () => messenger.rooms.value.map((room) => room.id),
+    (roomIds, previousRoomIds = []) => {
+        previousRoomIds
+            .filter((roomId) => !roomIds.includes(roomId))
+            .forEach((roomId) => window.Echo.leave(`rooms.${roomId}`));
+
+        roomIds
+            .filter((roomId) => !previousRoomIds.includes(roomId))
+            .forEach((roomId) => {
+                window.Echo.private(`rooms.${roomId}`).listen(
+                    '.RoomMessageSent',
+                    (event: MessagePayload) => {
+                        messenger.applyMessage(event);
+                    },
+                );
+            });
+    },
+    { immediate: true },
+);
+
+watch(
     () => page.url,
     (url) => {
         if (url.startsWith('/dms/')) {
@@ -240,6 +251,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEscape);
     document.removeEventListener('click', handleDocumentClick);
     window.Echo.leave(`App.Models.User.${currentUserId}`);
+    messenger.rooms.value.forEach((room) => window.Echo.leave(`rooms.${room.id}`));
 });
 </script>
 
@@ -404,17 +416,31 @@ onBeforeUnmount(() => {
                         <span
                             class="mb-0.5 flex items-baseline justify-between gap-3"
                         >
-                            <span class="truncate text-sm font-bold">
-                                {{ chat.name }}
+                            <span class="flex min-w-0 items-center gap-2">
+                                <span
+                                    v-if="chat.unread_count > 0"
+                                    class="size-2.5 shrink-0 rounded-full bg-[#0b84ff] ring-2 ring-white"
+                                    aria-label="Unread messages"
+                                />
+                                <span class="truncate text-sm font-bold">
+                                    {{ chat.name }}
+                                </span>
                             </span>
                             <span
                                 v-if="chat.time"
-                                class="shrink-0 text-[11px] text-[#6c797c]"
+                                class="shrink-0 rounded-full bg-[#d8ebff] px-2 py-0.5 text-[11px] font-bold text-[#0b5cad]"
                             >
                                 {{ chat.time }}
                             </span>
                         </span>
-                        <span class="block truncate text-xs text-[#6c797c]">
+                        <span
+                            class="block truncate text-xs"
+                            :class="
+                                chat.unread_count > 0
+                                    ? 'font-semibold text-[#344649]'
+                                    : 'text-[#6c797c]'
+                            "
+                        >
                             {{ chat.preview }}
                         </span>
                     </span>
@@ -441,21 +467,42 @@ onBeforeUnmount(() => {
                     </span>
 
                     <span class="min-w-0 flex-1">
-                        <span class="block truncate text-sm font-bold">
-                            {{ user.name }}
+                        <span class="mb-0.5 flex items-baseline justify-between gap-3">
+                            <span class="flex min-w-0 items-center gap-2">
+                                <span
+                                    v-if="user.unread_count > 0"
+                                    class="size-2.5 shrink-0 rounded-full bg-[#0b84ff] ring-2 ring-white"
+                                    aria-label="Unread messages"
+                                />
+                                <span class="truncate text-sm font-bold">
+                                    {{ user.name }}
+                                </span>
+                            </span>
+                            <span
+                                v-if="user.time"
+                                class="shrink-0 rounded-full bg-[#d8ebff] px-2 py-0.5 text-[11px] font-bold text-[#0b5cad]"
+                            >
+                                {{ user.time }}
+                            </span>
                         </span>
-                        <span class="block truncate text-xs text-[#6c797c]">
+                        <span
+                            class="block truncate text-xs"
+                            :class="
+                                user.unread_count > 0
+                                    ? 'font-semibold text-[#344649]'
+                                    : 'text-[#6c797c]'
+                            "
+                        >
                             {{ user.preview }}
                         </span>
                     </span>
                 </Link>
-
-                <p
+                <div
                     v-if="directMessageUsers.length === 0"
-                    class="px-4 py-6 text-sm text-[#6c797c]"
+                    class="px-6 py-10 text-center text-sm text-[#6c797c]"
                 >
                     No users yet
-                </p>
+                </div>
             </div>
         </aside>
 
