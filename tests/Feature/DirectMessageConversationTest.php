@@ -136,6 +136,7 @@ class DirectMessageConversationTest extends TestCase
         $this->assertSame($user->id, $notification->data['sender_id']);
         $this->assertSame($user->name, $notification->data['sender_name']);
         $this->assertSame('This should notify Alice.', $notification->data['body']);
+        $this->assertSame(route('direct-messages.show', $user), $notification->data['action_url']);
     }
 
     public function test_authenticated_layout_shares_notifications_and_can_mark_them_as_read(): void
@@ -165,6 +166,8 @@ class DirectMessageConversationTest extends TestCase
                 ->has('notifications.items', 1)
                 ->where('notifications.items.0.sender_name', 'Tom')
                 ->where('notifications.items.0.body', 'Shared notification.')
+                ->where('notifications.items.0.sender_id', $sender->id)
+                ->where('notifications.items.0.action_url', route('direct-messages.show', $sender))
                 ->where('notifications.items.0.read_at', null)
             );
 
@@ -173,6 +176,63 @@ class DirectMessageConversationTest extends TestCase
             ->assertRedirect();
 
         $this->assertSame(0, $recipient->fresh()->unreadNotifications()->count());
+    }
+
+    public function test_user_can_mark_notifications_from_a_specific_sender_as_read(): void
+    {
+        $sender = User::factory()->create();
+        $otherSender = User::factory()->create();
+        $recipient = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Direct,
+            'title' => null,
+            'slug' => 'dm-specific-sender-notifications',
+            'created_by_id' => $sender->id,
+        ]);
+        $otherConversation = Conversation::factory()->create([
+            'type' => ConversationType::Direct,
+            'title' => null,
+            'slug' => 'dm-other-sender-notifications',
+            'created_by_id' => $otherSender->id,
+        ]);
+        $conversation->users()->attach([$sender->id, $recipient->id]);
+        $otherConversation->users()->attach([$otherSender->id, $recipient->id]);
+
+        $recipient->notify(new DirectMessageReceived(Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $sender->id,
+            'body' => 'First unread.',
+        ])));
+        $recipient->notify(new DirectMessageReceived(Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $sender->id,
+            'body' => 'Second unread.',
+        ])));
+        $recipient->notify(new DirectMessageReceived(Message::factory()->create([
+            'conversation_id' => $otherConversation->id,
+            'user_id' => $otherSender->id,
+            'body' => 'Leave this unread.',
+        ])));
+
+        $this->actingAs($recipient)
+            ->post(route('notifications.from-sender.read', $sender))
+            ->assertRedirect();
+
+        $this->assertSame(1, $recipient->fresh()->unreadNotifications()->count());
+        $this->assertSame(
+            0,
+            $recipient->notifications()
+                ->whereNull('read_at')
+                ->where('data->sender_id', $sender->id)
+                ->count()
+        );
+        $this->assertSame(
+            1,
+            $recipient->notifications()
+                ->whereNull('read_at')
+                ->where('data->sender_id', $otherSender->id)
+                ->count()
+        );
     }
 
     public function test_users_cannot_open_a_direct_message_with_themselves(): void

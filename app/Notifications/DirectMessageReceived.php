@@ -25,7 +25,7 @@ class DirectMessageReceived extends Notification
     /**
      * Get the database representation of the notification.
      *
-     * @return array{message_id: int, conversation_id: int, sender_id: int, sender_name: string, body: string|null}
+     * @return array{message_id: int, conversation_id: int, sender_id: int, sender_name: string, body: string|null, action_url: string}
      */
     public function toDatabase(object $notifiable): array
     {
@@ -35,7 +35,7 @@ class DirectMessageReceived extends Notification
     /**
      * Get the array representation of the notification broadcast.
      *
-     * @return array{title: string, message_id: int, conversation_id: int, sender_id: int, sender_name: string, body: string|null, read_at: null, created_at: string, created_at_human: string}
+     * @return array{title: string, message_id: int, conversation_id: int, sender_id: int, sender_name: string, body: string|null, action_url: string, read_at: null, created_at: string, created_at_human: string}
      */
     public function toArray(object $notifiable): array
     {
@@ -43,7 +43,7 @@ class DirectMessageReceived extends Notification
     }
 
     /**
-     * @return array{title: string, message_id: int, conversation_id: int, sender_id: int, sender_name: string, body: string|null, read_at: null, created_at: string, created_at_human: string}
+     * @return array{title: string, message_id: int, conversation_id: int, sender_id: int, sender_name: string, body: string|null, action_url: string, read_at: null, created_at: string, created_at_human: string}
      */
     private function payload(): array
     {
@@ -56,6 +56,7 @@ class DirectMessageReceived extends Notification
             'sender_id' => $this->message->user_id,
             'sender_name' => $this->message->user->name,
             'body' => $this->message->body,
+            'action_url' => route('direct-messages.show', $this->message->user),
             'read_at' => null,
             'created_at' => $this->message->created_at->toIso8601String(),
             'created_at_human' => $this->message->created_at->diffForHumans(),

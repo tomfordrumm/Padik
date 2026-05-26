@@ -197,7 +197,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 # Laravel Wayfinder
 
 Use Wayfinder to generate TypeScript functions for Laravel routes. Import from `@/actions/` (controllers) or `@/routes/` (named routes).
-
+Always use with --with-form to get correct types for form data. For example: `php artisan wayfinder:generate --with-form`.
 === pint/core rules ===
 
 # Laravel Pint Code Formatter

@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { dashboard, logout } from '@/routes';
 import { show as showDirectMessage } from '@/routes/direct-messages';
 import { read as readNotifications } from '@/routes/notifications';
+import { read as readNotificationsFromSender } from '@/routes/notifications/from-sender';
 import { edit as editProfile } from '@/routes/profile';
 import { show as showRoom } from '@/routes/rooms';
 import type {
@@ -33,6 +34,7 @@ const activeTab = ref<'rooms' | 'dms'>(
     page.url.startsWith('/dms/') ? 'dms' : 'rooms',
 );
 const areNotificationsOpen = ref(false);
+const notificationsMenu = ref<HTMLElement | null>(null);
 
 const roomColors = ['bg-[#007681]', 'bg-[#3f6b73]', 'bg-[#966000]'];
 
@@ -114,6 +116,52 @@ const markNotificationsAsRead = () => {
     );
 };
 
+const openNotification = (notification: NotificationItem) => {
+    const actionUrl = notification.action_url;
+
+    if (!actionUrl) {
+        return;
+    }
+
+    closeNotifications();
+
+    if (!notification.sender_id) {
+        router.visit(actionUrl);
+
+        return;
+    }
+
+    router.post(
+        readNotificationsFromSender.url(notification.sender_id),
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                const readAt = new Date().toISOString();
+
+                page.props.notifications = {
+                    ...notifications.value,
+                    unread_count: notifications.value.items.filter(
+                        (currentNotification) =>
+                            !currentNotification.read_at &&
+                            currentNotification.sender_id !== notification.sender_id,
+                    ).length,
+                    items: notifications.value.items.map((currentNotification) =>
+                        currentNotification.sender_id === notification.sender_id
+                            ? {
+                                  ...currentNotification,
+                                  read_at: currentNotification.read_at ?? readAt,
+                              }
+                            : currentNotification,
+                    ),
+                };
+
+                router.visit(actionUrl);
+            },
+        },
+    );
+};
+
 const appendNotification = (notification: BroadcastDirectMessageNotification) => {
     const notificationId = notification.id ?? crypto.randomUUID();
     const currentNotifications = notifications.value;
@@ -134,7 +182,9 @@ const appendNotification = (notification: BroadcastDirectMessageNotification) =>
                 type: notification.type,
                 title: notification.title,
                 body: notification.body,
+                sender_id: notification.sender_id,
                 sender_name: notification.sender_name,
+                action_url: notification.action_url,
                 read_at: null,
                 created_at: notification.created_at,
                 created_at_human: notification.created_at_human,
@@ -151,8 +201,27 @@ const handleEscape = (event: KeyboardEvent) => {
     }
 };
 
+const handleDocumentClick = (event: MouseEvent) => {
+    if (!areNotificationsOpen.value) {
+        return;
+    }
+
+    const target = event.target;
+
+    if (!(target instanceof Node)) {
+        return;
+    }
+
+    if (notificationsMenu.value?.contains(target)) {
+        return;
+    }
+
+    closeNotifications();
+};
+
 onMounted(() => {
     window.addEventListener('keydown', handleEscape);
+    document.addEventListener('click', handleDocumentClick);
     window.Echo.private(`App.Models.User.${currentUserId}`).notification(
         appendNotification,
     );
@@ -169,6 +238,7 @@ watch(
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEscape);
+    document.removeEventListener('click', handleDocumentClick);
     window.Echo.leave(`App.Models.User.${currentUserId}`);
 });
 </script>
@@ -199,7 +269,7 @@ onBeforeUnmount(() => {
                         Padik
                     </Link>
 
-                    <div class="relative ml-auto">
+                    <div ref="notificationsMenu" class="relative ml-auto">
                         <button
                             class="relative grid size-10 place-items-center rounded-full text-[#171d1e] transition-colors hover:bg-[#e4e9ea]"
                             aria-label="Open notifications"
@@ -235,11 +305,13 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div class="chat-scroll max-h-96 overflow-y-auto py-1">
-                                <div
+                                <button
                                     v-for="notification in notifications.items"
                                     :key="notification.id"
-                                    class="border-b border-[#bbc9cb]/30 px-4 py-3 last:border-b-0"
+                                    type="button"
+                                    class="block w-full border-b border-[#bbc9cb]/30 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#eff5f5] focus:bg-[#eff5f5] focus:outline-none"
                                     :class="notification.read_at ? 'bg-white' : 'bg-[#006874]/5'"
+                                    @click="openNotification(notification)"
                                 >
                                     <div class="flex items-start justify-between gap-3">
                                         <span class="min-w-0">
@@ -259,7 +331,7 @@ onBeforeUnmount(() => {
                                     <span class="mt-2 block text-[11px] text-[#8a989b]">
                                         {{ notification.created_at_human }}
                                     </span>
-                                </div>
+                                </button>
 
                                 <p
                                     v-if="notifications.items.length === 0"

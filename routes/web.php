@@ -15,6 +15,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
     Route::get('dms/{user}', DirectMessageController::class)->name('direct-messages.show');
     Route::post('notifications/read', [NotificationController::class, 'markAllAsRead'])->name('notifications.read');
+    Route::post('notifications/from/{sender}/read', [NotificationController::class, 'markFromSenderAsRead'])->name('notifications.from-sender.read');
     Route::get('r/{conversation:slug}', RoomController::class)->name('rooms.show');
     Route::post('r/{conversation:slug}/messages', [RoomMessageController::class, 'store'])->name('rooms.messages.store');
 });

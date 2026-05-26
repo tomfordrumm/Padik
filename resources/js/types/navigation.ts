@@ -33,7 +33,9 @@ export type NotificationItem = {
     type: string;
     title: string;
     body: string | null;
+    sender_id: number | null;
     sender_name: string | null;
+    action_url: string | null;
     read_at: string | null;
     created_at: string;
     created_at_human: string;
