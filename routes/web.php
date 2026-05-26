@@ -9,6 +9,10 @@ use App\Http\Controllers\RoomMemberController;
 use App\Http\Controllers\RoomMembershipController;
 use App\Http\Controllers\RoomMessageController;
 use App\Http\Controllers\RoomSettingsController;
+use App\Http\Controllers\SecretChatController;
+use App\Http\Controllers\SecretChatKeyController;
+use App\Http\Controllers\SecretChatMessageController;
+use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 
@@ -18,7 +22,12 @@ Route::inertia('/', 'Welcome', [
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('users/{user}', UserProfileController::class)->name('users.show');
     Route::get('dms/{user}', DirectMessageController::class)->name('direct-messages.show');
+    Route::post('secret-chats/{user}', [SecretChatController::class, 'store'])->name('secret-chats.store');
+    Route::get('secret-chats/{conversation:slug}', [SecretChatController::class, 'show'])->name('secret-chats.show');
+    Route::post('secret-chats/{conversation:slug}/key', [SecretChatKeyController::class, 'store'])->name('secret-chats.key.store');
+    Route::post('secret-chats/{conversation:slug}/messages', [SecretChatMessageController::class, 'store'])->name('secret-chats.messages.store');
     Route::post('notifications/read', [NotificationController::class, 'markAllAsRead'])->name('notifications.read');
     Route::post('notifications/from/{sender}/read', [NotificationController::class, 'markFromSenderAsRead'])->name('notifications.from-sender.read');
     Route::post('notifications/{notification}/accept-invitation', [InvitationResponseController::class, 'accept'])->name('notifications.invitations.accept');

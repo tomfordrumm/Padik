@@ -1,7 +1,23 @@
 <script setup lang="ts">
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { Bell, Check, LogOut, Menu, Pencil, Search, User, X } from 'lucide-vue-next';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+    Bell,
+    Check,
+    LogOut,
+    Menu,
+    Pencil,
+    Search,
+    User,
+    X,
+} from 'lucide-vue-next';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    watch,
+} from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -59,7 +75,9 @@ const areNotificationsOpen = ref(false);
 const isCreateRoomOpen = ref(false);
 const roomTitleInput = ref<{ $el: HTMLInputElement } | null>(null);
 const createRoomStep = ref<'details' | 'invite'>('details');
-const createdRoom = ref<{ id: number; title: string; slug: string } | null>(null);
+const createdRoom = ref<{ id: number; title: string; slug: string } | null>(
+    null,
+);
 const notificationsMenu = ref<HTMLElement | null>(null);
 const createRoomForm = useForm({
     title: '',
@@ -172,7 +190,9 @@ const isUserSelectedForInvite = (userId: number): boolean =>
 
 const toggleInviteUser = (userId: number) => {
     inviteUsersForm.user_ids = isUserSelectedForInvite(userId)
-        ? inviteUsersForm.user_ids.filter((selectedUserId) => selectedUserId !== userId)
+        ? inviteUsersForm.user_ids.filter(
+              (selectedUserId) => selectedUserId !== userId,
+          )
         : [...inviteUsersForm.user_ids, userId];
 };
 
@@ -236,7 +256,8 @@ const openNotification = (notification: NotificationItem) => {
 };
 
 const isInvitationNotification = (notification: NotificationItem): boolean =>
-    notification.type.endsWith('RoomInvitationReceived') &&
+    (notification.type.endsWith('RoomInvitationReceived') ||
+        notification.type.endsWith('SecretChatInvitationReceived')) &&
     Boolean(notification.invitation_id);
 
 const acceptInvitationNotification = (notification: NotificationItem) => {
@@ -263,7 +284,9 @@ const declineInvitationNotification = (notification: NotificationItem) => {
     );
 };
 
-const appendNotification = (notification: BroadcastDirectMessageNotification) => {
+const appendNotification = (
+    notification: BroadcastDirectMessageNotification,
+) => {
     const notificationId = notification.id ?? crypto.randomUUID();
     const currentNotifications = notifications.value;
 
@@ -283,6 +306,9 @@ const appendNotification = (notification: BroadcastDirectMessageNotification) =>
         sender_id: notification.sender_id,
         sender_name: notification.sender_name,
         action_url: notification.action_url,
+        invitation_id: notification.invitation_id,
+        conversation_id: notification.conversation_id,
+        room_title: notification.room_title,
         read_at: null,
         created_at: notification.created_at,
         created_at_human: notification.created_at_human,
@@ -372,7 +398,9 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEscape);
     document.removeEventListener('click', handleDocumentClick);
     window.Echo.leave(`App.Models.User.${currentUserId}`);
-    messenger.rooms.value.forEach((room) => window.Echo.leave(`rooms.${room.id}`));
+    messenger.rooms.value.forEach((room) =>
+        window.Echo.leave(`rooms.${room.id}`),
+    );
 });
 </script>
 
@@ -408,14 +436,20 @@ onBeforeUnmount(() => {
                             aria-label="Open notifications"
                             :aria-expanded="areNotificationsOpen"
                             aria-controls="notifications-menu"
-                            @click="areNotificationsOpen = !areNotificationsOpen"
+                            @click="
+                                areNotificationsOpen = !areNotificationsOpen
+                            "
                         >
                             <Bell class="size-5" />
                             <span
                                 v-if="notifications.unread_count > 0"
                                 class="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-[#ba1a1a] px-1 text-[10px] leading-4 font-bold text-white"
                             >
-                                {{ notifications.unread_count > 9 ? '9+' : notifications.unread_count }}
+                                {{
+                                    notifications.unread_count > 9
+                                        ? '9+'
+                                        : notifications.unread_count
+                                }}
                             </span>
                         </button>
 
@@ -424,7 +458,9 @@ onBeforeUnmount(() => {
                             id="notifications-menu"
                             class="absolute top-12 right-0 z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-[#bbc9cb] bg-white shadow-xl"
                         >
-                            <div class="flex items-center justify-between gap-3 border-b border-[#bbc9cb]/60 px-4 py-3">
+                            <div
+                                class="flex items-center justify-between gap-3 border-b border-[#bbc9cb]/60 px-4 py-3"
+                            >
                                 <span class="text-sm font-bold text-[#171d1e]">
                                     Notifications
                                 </span>
@@ -437,22 +473,40 @@ onBeforeUnmount(() => {
                                 </button>
                             </div>
 
-                            <div class="chat-scroll max-h-96 overflow-y-auto py-1">
+                            <div
+                                class="chat-scroll max-h-96 overflow-y-auto py-1"
+                            >
                                 <button
                                     v-for="notification in notifications.items"
                                     :key="notification.id"
                                     type="button"
                                     class="block w-full border-b border-[#bbc9cb]/30 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#eff5f5] focus:bg-[#eff5f5] focus:outline-none"
-                                    :class="notification.read_at ? 'bg-white' : 'bg-[#006874]/5'"
+                                    :class="
+                                        notification.read_at
+                                            ? 'bg-white'
+                                            : 'bg-[#006874]/5'
+                                    "
                                     @click="openNotification(notification)"
                                 >
-                                    <div class="flex items-start justify-between gap-3">
+                                    <div
+                                        class="flex items-start justify-between gap-3"
+                                    >
                                         <span class="min-w-0">
-                                            <span class="block truncate text-sm font-bold text-[#171d1e]">
-                                                {{ notification.sender_name ?? notification.title }}
+                                            <span
+                                                class="block truncate text-sm font-bold text-[#171d1e]"
+                                            >
+                                                {{
+                                                    notification.sender_name ??
+                                                    notification.title
+                                                }}
                                             </span>
-                                            <span class="mt-0.5 block line-clamp-2 text-xs leading-5 text-[#6c797c]">
-                                                {{ notification.body ?? 'Sent you a direct message.' }}
+                                            <span
+                                                class="mt-0.5 line-clamp-2 block text-xs leading-5 text-[#6c797c]"
+                                            >
+                                                {{
+                                                    notification.body ??
+                                                    'Sent you a direct message.'
+                                                }}
                                             </span>
                                         </span>
                                         <span
@@ -462,7 +516,11 @@ onBeforeUnmount(() => {
                                         />
                                     </div>
                                     <div
-                                        v-if="isInvitationNotification(notification) && !notification.read_at"
+                                        v-if="
+                                            isInvitationNotification(
+                                                notification,
+                                            ) && !notification.read_at
+                                        "
                                         class="mt-3 flex items-center gap-2"
                                         @click.stop
                                     >
@@ -470,7 +528,11 @@ onBeforeUnmount(() => {
                                             type="button"
                                             class="grid size-8 place-items-center rounded-full bg-[#ffdad6] text-[#ba1a1a] transition-colors hover:bg-[#ffb4ab] focus:ring-2 focus:ring-[#ba1a1a]/20 focus:outline-none"
                                             aria-label="Decline room invitation"
-                                            @click="declineInvitationNotification(notification)"
+                                            @click="
+                                                declineInvitationNotification(
+                                                    notification,
+                                                )
+                                            "
                                         >
                                             <X class="size-4" />
                                         </button>
@@ -478,12 +540,18 @@ onBeforeUnmount(() => {
                                             type="button"
                                             class="grid size-8 place-items-center rounded-full bg-[#d8f5dc] text-[#0f6b2f] transition-colors hover:bg-[#b9edc4] focus:ring-2 focus:ring-[#0f6b2f]/20 focus:outline-none"
                                             aria-label="Accept room invitation"
-                                            @click="acceptInvitationNotification(notification)"
+                                            @click="
+                                                acceptInvitationNotification(
+                                                    notification,
+                                                )
+                                            "
                                         >
                                             <Check class="size-4" />
                                         </button>
                                     </div>
-                                    <span class="mt-2 block text-[11px] text-[#8a989b]">
+                                    <span
+                                        class="mt-2 block text-[11px] text-[#8a989b]"
+                                    >
                                         {{ notification.created_at_human }}
                                     </span>
                                 </button>
@@ -547,7 +615,10 @@ onBeforeUnmount(() => {
                 </button>
             </div>
 
-            <div v-if="activeTab === 'rooms'" class="chat-scroll flex-1 overflow-y-auto py-2">
+            <div
+                v-if="activeTab === 'rooms'"
+                class="chat-scroll flex-1 overflow-y-auto py-2"
+            >
                 <Link
                     v-for="chat in chats"
                     :key="chat.id"
@@ -621,7 +692,9 @@ onBeforeUnmount(() => {
                     </span>
 
                     <span class="min-w-0 flex-1">
-                        <span class="mb-0.5 flex items-baseline justify-between gap-3">
+                        <span
+                            class="mb-0.5 flex items-baseline justify-between gap-3"
+                        >
                             <span class="flex min-w-0 items-center gap-2">
                                 <span
                                     v-if="user.unread_count > 0"
@@ -789,14 +862,23 @@ onBeforeUnmount(() => {
                         >
                             Cancel
                         </Button>
-                        <Button type="submit" :disabled="createRoomForm.processing">
+                        <Button
+                            type="submit"
+                            :disabled="createRoomForm.processing"
+                        >
                             Create
                         </Button>
                     </DialogFooter>
                 </form>
 
-                <form v-else class="space-y-4" @submit.prevent="submitRoomInvitations">
-                    <div class="chat-scroll max-h-72 space-y-1 overflow-y-auto pr-1">
+                <form
+                    v-else
+                    class="space-y-4"
+                    @submit.prevent="submitRoomInvitations"
+                >
+                    <div
+                        class="chat-scroll max-h-72 space-y-1 overflow-y-auto pr-1"
+                    >
                         <button
                             v-for="user in invitableUsers"
                             :key="user.id"
@@ -811,10 +893,14 @@ onBeforeUnmount(() => {
                                 {{ user.initials }}
                             </span>
                             <span class="min-w-0 flex-1">
-                                <span class="block truncate text-sm font-semibold text-[#171d1e]">
+                                <span
+                                    class="block truncate text-sm font-semibold text-[#171d1e]"
+                                >
                                     {{ user.name }}
                                 </span>
-                                <span class="block truncate text-xs text-[#6c797c]">
+                                <span
+                                    class="block truncate text-xs text-[#6c797c]"
+                                >
                                     {{ user.preview }}
                                 </span>
                             </span>
@@ -850,7 +936,11 @@ onBeforeUnmount(() => {
                     </p>
 
                     <DialogFooter>
-                        <Button type="button" variant="ghost" @click="closeCreateRoom">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            @click="closeCreateRoom"
+                        >
                             Skip
                         </Button>
                         <Button

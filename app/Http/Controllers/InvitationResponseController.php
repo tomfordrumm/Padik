@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ConversationParticipantRole;
+use App\Enums\ConversationType;
 use App\Enums\InvitationStatus;
 use App\Models\Invitation;
 use Illuminate\Http\RedirectResponse;
@@ -40,6 +41,10 @@ class InvitationResponseController extends Controller
 
             $notification->markAsRead();
         });
+
+        if ($invitation->conversation->type === ConversationType::Secret) {
+            return to_route('secret-chats.show', ['conversation' => $invitation->conversation->slug]);
+        }
 
         return to_route('rooms.show', ['conversation' => $invitation->conversation->slug]);
     }

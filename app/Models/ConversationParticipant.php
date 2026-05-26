@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
-#[Fillable(['conversation_id', 'user_id', 'role', 'unread_count', 'last_read_at'])]
+#[Fillable(['conversation_id', 'user_id', 'role', 'unread_count', 'last_read_at', 'secret_public_key', 'secret_key_fingerprint'])]
 class ConversationParticipant extends Pivot
 {
     /** @use HasFactory<ConversationParticipantFactory> */
@@ -28,6 +28,7 @@ class ConversationParticipant extends Pivot
             'role' => ConversationParticipantRole::class,
             'unread_count' => 'integer',
             'last_read_at' => 'datetime',
+            'secret_public_key' => 'array',
         ];
     }
 

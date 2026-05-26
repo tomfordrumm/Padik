@@ -17,7 +17,7 @@ export type CurrentRoom = {
 };
 
 export type Message = {
-    id: number;
+    id: number | string;
     sender_id: number;
     author: string;
     body: string | null;
@@ -56,7 +56,10 @@ const state = reactive<State>({
     messages: [],
 });
 
-const normalizeMessage = (message: Message, currentUserId: number): Message => ({
+const normalizeMessage = (
+    message: Message,
+    currentUserId: number,
+): Message => ({
     ...message,
     own: Number(message.sender_id) === currentUserId,
 });
@@ -68,7 +71,11 @@ const replaceById = <T extends { id: number }>(
 ): T[] => items.map((item) => (item.id === id ? updater(item) : item));
 
 const addMessage = (message: Message): void => {
-    if (state.messages.some((currentMessage) => currentMessage.id === message.id)) {
+    if (
+        state.messages.some(
+            (currentMessage) => currentMessage.id === message.id,
+        )
+    ) {
         return;
     }
 
@@ -134,7 +141,8 @@ export function useMessengerStore(currentUserId: number) {
             const directUserId =
                 payload.conversation.direct_user_id ?? message.sender_id;
             const shouldIncrementUnread =
-                !message.own && state.currentRoom?.id !== payload.conversation.id;
+                !message.own &&
+                state.currentRoom?.id !== payload.conversation.id;
 
             state.directMessageUsers = replaceById(
                 state.directMessageUsers,
@@ -154,19 +162,24 @@ export function useMessengerStore(currentUserId: number) {
         const shouldIncrementUnread =
             !message.own && state.currentRoom?.id !== payload.conversation.id;
 
-        state.rooms = replaceById(state.rooms, payload.conversation.id, (room) => ({
-            ...room,
-            last_message: message.body,
-            unread_count: shouldIncrementUnread
-                ? room.unread_count + 1
-                : room.unread_count,
-        }));
+        state.rooms = replaceById(
+            state.rooms,
+            payload.conversation.id,
+            (room) => ({
+                ...room,
+                last_message: message.body,
+                unread_count: shouldIncrementUnread
+                    ? room.unread_count + 1
+                    : room.unread_count,
+            }),
+        );
     };
 
     const appendNotification = (notification: NotificationItem): void => {
         if (
             state.notifications.items.some(
-                (currentNotification) => currentNotification.id === notification.id,
+                (currentNotification) =>
+                    currentNotification.id === notification.id,
             )
         ) {
             return;
@@ -185,7 +198,8 @@ export function useMessengerStore(currentUserId: number) {
                     ...user,
                     last_message: notification.body,
                     unread_count:
-                        state.currentRoom?.direct_user_id === notification.sender_id
+                        state.currentRoom?.direct_user_id ===
+                        notification.sender_id
                             ? user.unread_count
                             : user.unread_count + 1,
                 }),
@@ -211,7 +225,8 @@ export function useMessengerStore(currentUserId: number) {
             ...state.notifications,
             unread_count: state.notifications.items.filter(
                 (notification) =>
-                    !notification.read_at && notification.sender_id !== senderId,
+                    !notification.read_at &&
+                    notification.sender_id !== senderId,
             ).length,
             items: state.notifications.items.map((notification) =>
                 notification.sender_id === senderId
