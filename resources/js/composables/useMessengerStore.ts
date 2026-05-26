@@ -11,6 +11,8 @@ export type CurrentRoom = {
     title: string;
     slug: string;
     type: string;
+    created_by_id?: number | null;
+    can_manage?: boolean;
     direct_user_id?: number | null;
 };
 

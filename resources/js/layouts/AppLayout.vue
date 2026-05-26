@@ -1,7 +1,18 @@
 <script setup lang="ts">
-import { Link, router, usePage } from '@inertiajs/vue3';
-import { Bell, LogOut, Menu, Search, User, X } from 'lucide-vue-next';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Bell, Check, LogOut, Menu, Pencil, Search, User, X } from 'lucide-vue-next';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Toaster } from '@/components/ui/sonner';
 import {
     type MessagePayload,
@@ -11,8 +22,13 @@ import { dashboard, logout } from '@/routes';
 import { show as showDirectMessage } from '@/routes/direct-messages';
 import { read as readNotifications } from '@/routes/notifications';
 import { read as readNotificationsFromSender } from '@/routes/notifications/from-sender';
+import {
+    accept as acceptInvitation,
+    decline as declineInvitation,
+} from '@/routes/notifications/invitations';
 import { edit as editProfile } from '@/routes/profile';
-import { show as showRoom } from '@/routes/rooms';
+import { store as storeRoomInvitation } from '@/routes/rooms/invitations';
+import { show as showRoom, store as storeRoom } from '@/routes/rooms';
 import type {
     Auth,
     DirectMessageUserNavItem,
@@ -40,7 +56,17 @@ const activeTab = ref<'rooms' | 'dms'>(
     page.url.startsWith('/dms/') ? 'dms' : 'rooms',
 );
 const areNotificationsOpen = ref(false);
+const isCreateRoomOpen = ref(false);
+const roomTitleInput = ref<{ $el: HTMLInputElement } | null>(null);
+const createRoomStep = ref<'details' | 'invite'>('details');
+const createdRoom = ref<{ id: number; title: string; slug: string } | null>(null);
 const notificationsMenu = ref<HTMLElement | null>(null);
+const createRoomForm = useForm({
+    title: '',
+});
+const inviteUsersForm = useForm<{ user_ids: number[] }>({
+    user_ids: [],
+});
 
 const roomColors = ['bg-[#007681]', 'bg-[#3f6b73]', 'bg-[#966000]'];
 
@@ -80,6 +106,10 @@ const directMessageUsers = computed<ChatPreview[]>(() =>
     })),
 );
 
+const invitableUsers = computed(() =>
+    directMessageUsers.value.filter((user) => user.id !== currentUserId),
+);
+
 const notifications = computed<NotificationNav>(
     () => messenger.notifications.value,
 );
@@ -98,6 +128,65 @@ const closeNotifications = () => {
     areNotificationsOpen.value = false;
 };
 
+const openCreateRoom = () => {
+    activeTab.value = 'rooms';
+    createRoomStep.value = 'details';
+    createdRoom.value = null;
+    inviteUsersForm.reset();
+    inviteUsersForm.clearErrors();
+    isCreateRoomOpen.value = true;
+
+    nextTick(() => roomTitleInput.value?.$el.focus());
+};
+
+const closeCreateRoom = () => {
+    isCreateRoomOpen.value = false;
+    createRoomStep.value = 'details';
+    createdRoom.value = null;
+    createRoomForm.reset();
+    createRoomForm.clearErrors();
+    inviteUsersForm.reset();
+    inviteUsersForm.clearErrors();
+};
+
+const submitCreateRoom = () => {
+    createRoomForm.post(storeRoom.url(), {
+        onSuccess: (page) => {
+            const currentRoom = page.props.currentRoom as
+                | { id: number; title: string; slug: string }
+                | undefined;
+
+            if (currentRoom) {
+                createdRoom.value = currentRoom;
+            }
+
+            createRoomForm.reset();
+            createRoomStep.value = 'invite';
+            isCreateRoomOpen.value = true;
+        },
+    });
+};
+
+const isUserSelectedForInvite = (userId: number): boolean =>
+    inviteUsersForm.user_ids.includes(userId);
+
+const toggleInviteUser = (userId: number) => {
+    inviteUsersForm.user_ids = isUserSelectedForInvite(userId)
+        ? inviteUsersForm.user_ids.filter((selectedUserId) => selectedUserId !== userId)
+        : [...inviteUsersForm.user_ids, userId];
+};
+
+const submitRoomInvitations = () => {
+    if (!createdRoom.value) {
+        return;
+    }
+
+    inviteUsersForm.post(storeRoomInvitation.url(createdRoom.value.slug), {
+        preserveScroll: true,
+        onSuccess: closeCreateRoom,
+    });
+};
+
 const markNotificationsAsRead = () => {
     router.post(
         readNotifications.url(),
@@ -112,6 +201,10 @@ const markNotificationsAsRead = () => {
 };
 
 const openNotification = (notification: NotificationItem) => {
+    if (isInvitationNotification(notification)) {
+        return;
+    }
+
     const actionUrl = notification.action_url;
 
     if (!actionUrl) {
@@ -137,6 +230,34 @@ const openNotification = (notification: NotificationItem) => {
                 messenger.markSenderNotificationsRead(senderId);
 
                 router.visit(actionUrl);
+            },
+        },
+    );
+};
+
+const isInvitationNotification = (notification: NotificationItem): boolean =>
+    notification.type.endsWith('RoomInvitationReceived') &&
+    Boolean(notification.invitation_id);
+
+const acceptInvitationNotification = (notification: NotificationItem) => {
+    router.post(
+        acceptInvitation.url(notification.id),
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => closeNotifications(),
+        },
+    );
+};
+
+const declineInvitationNotification = (notification: NotificationItem) => {
+    router.post(
+        declineInvitation.url(notification.id),
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                messenger.markNotificationsRead();
             },
         },
     );
@@ -340,6 +461,28 @@ onBeforeUnmount(() => {
                                             aria-label="Unread"
                                         />
                                     </div>
+                                    <div
+                                        v-if="isInvitationNotification(notification) && !notification.read_at"
+                                        class="mt-3 flex items-center gap-2"
+                                        @click.stop
+                                    >
+                                        <button
+                                            type="button"
+                                            class="grid size-8 place-items-center rounded-full bg-[#ffdad6] text-[#ba1a1a] transition-colors hover:bg-[#ffb4ab] focus:ring-2 focus:ring-[#ba1a1a]/20 focus:outline-none"
+                                            aria-label="Decline room invitation"
+                                            @click="declineInvitationNotification(notification)"
+                                        >
+                                            <X class="size-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="grid size-8 place-items-center rounded-full bg-[#d8f5dc] text-[#0f6b2f] transition-colors hover:bg-[#b9edc4] focus:ring-2 focus:ring-[#0f6b2f]/20 focus:outline-none"
+                                            aria-label="Accept room invitation"
+                                            @click="acceptInvitationNotification(notification)"
+                                        >
+                                            <Check class="size-4" />
+                                        </button>
+                                    </div>
                                     <span class="mt-2 block text-[11px] text-[#8a989b]">
                                         {{ notification.created_at_human }}
                                     </span>
@@ -356,16 +499,27 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <label class="relative block">
-                    <Search
-                        class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-[#6c797c]"
-                    />
-                    <input
-                        class="h-12 w-full rounded-full border-0 bg-[#eff5f5] pr-4 pl-12 text-base text-[#171d1e] placeholder:text-[#718083] focus:ring-2 focus:ring-[#006874]/20 focus:outline-none"
-                        placeholder="Search"
-                        type="search"
-                    />
-                </label>
+                <div class="flex items-center gap-2">
+                    <label class="relative block min-w-0 flex-1">
+                        <Search
+                            class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-[#6c797c]"
+                        />
+                        <input
+                            class="h-12 w-full rounded-full border-0 bg-[#eff5f5] pr-4 pl-12 text-base text-[#171d1e] placeholder:text-[#718083] focus:ring-2 focus:ring-[#006874]/20 focus:outline-none"
+                            placeholder="Search"
+                            type="search"
+                        />
+                    </label>
+
+                    <button
+                        type="button"
+                        class="grid size-12 shrink-0 place-items-center rounded-full bg-[#007681] text-white transition-colors hover:bg-[#006874] focus:ring-2 focus:ring-[#006874]/25 focus:outline-none"
+                        aria-label="Create group room"
+                        @click="openCreateRoom"
+                    >
+                        <Pencil class="size-5" />
+                    </button>
+                </div>
             </div>
 
             <div class="flex gap-1 border-b border-[#bbc9cb] px-2 pt-2">
@@ -583,6 +737,135 @@ onBeforeUnmount(() => {
                 </aside>
             </Transition>
         </Teleport>
+
+        <Dialog v-model:open="isCreateRoomOpen">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>
+                        {{
+                            createRoomStep === 'details'
+                                ? 'Create group room'
+                                : 'Invite people'
+                        }}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {{
+                            createRoomStep === 'details'
+                                ? 'Name the room. You can invite people after it is created.'
+                                : `Choose who to invite to ${createdRoom?.title ?? 'this room'}.`
+                        }}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form
+                    v-if="createRoomStep === 'details'"
+                    class="space-y-4"
+                    @submit.prevent="submitCreateRoom"
+                >
+                    <div class="space-y-2">
+                        <Label for="room-title">Room name</Label>
+                        <Input
+                            id="room-title"
+                            ref="roomTitleInput"
+                            v-model="createRoomForm.title"
+                            name="title"
+                            maxlength="80"
+                            autocomplete="off"
+                            :aria-invalid="Boolean(createRoomForm.errors.title)"
+                        />
+                        <p
+                            v-if="createRoomForm.errors.title"
+                            class="text-sm font-medium text-[#ba1a1a]"
+                        >
+                            {{ createRoomForm.errors.title }}
+                        </p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            @click="closeCreateRoom"
+                        >
+                            Cancel
+                        </Button>
+                        <Button type="submit" :disabled="createRoomForm.processing">
+                            Create
+                        </Button>
+                    </DialogFooter>
+                </form>
+
+                <form v-else class="space-y-4" @submit.prevent="submitRoomInvitations">
+                    <div class="chat-scroll max-h-72 space-y-1 overflow-y-auto pr-1">
+                        <button
+                            v-for="user in invitableUsers"
+                            :key="user.id"
+                            type="button"
+                            class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-[#eff5f5] focus:bg-[#eff5f5] focus:outline-none"
+                            @click="toggleInviteUser(user.id)"
+                        >
+                            <span
+                                class="grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold text-white"
+                                :class="user.color"
+                            >
+                                {{ user.initials }}
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-sm font-semibold text-[#171d1e]">
+                                    {{ user.name }}
+                                </span>
+                                <span class="block truncate text-xs text-[#6c797c]">
+                                    {{ user.preview }}
+                                </span>
+                            </span>
+                            <span
+                                class="grid size-5 shrink-0 place-items-center rounded border transition-colors"
+                                :class="
+                                    isUserSelectedForInvite(user.id)
+                                        ? 'border-[#007681] bg-[#007681] text-white'
+                                        : 'border-[#9ba9ac] bg-white'
+                                "
+                                aria-hidden="true"
+                            >
+                                <span
+                                    v-if="isUserSelectedForInvite(user.id)"
+                                    class="size-2 rounded-full bg-current"
+                                />
+                            </span>
+                        </button>
+
+                        <p
+                            v-if="invitableUsers.length === 0"
+                            class="px-4 py-8 text-center text-sm text-[#6c797c]"
+                        >
+                            No users available to invite
+                        </p>
+                    </div>
+
+                    <p
+                        v-if="inviteUsersForm.errors.user_ids"
+                        class="text-sm font-medium text-[#ba1a1a]"
+                    >
+                        {{ inviteUsersForm.errors.user_ids }}
+                    </p>
+
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" @click="closeCreateRoom">
+                            Skip
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="
+                                inviteUsersForm.processing ||
+                                inviteUsersForm.user_ids.length === 0
+                            "
+                        >
+                            Invite
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
 
         <Toaster />
     </div>

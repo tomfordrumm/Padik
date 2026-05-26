@@ -3,14 +3,19 @@
 namespace Tests\Feature;
 
 use App\Actions\Conversations\EnsureGeneralConversation;
+use App\Enums\ConversationParticipantRole;
 use App\Enums\ConversationType;
+use App\Enums\InvitationStatus;
 use App\Events\RoomMessageSent;
 use App\Http\Resources\MessageData;
 use App\Models\Conversation;
+use App\Models\Invitation;
 use App\Models\Message;
 use App\Models\User;
+use App\Notifications\RoomInvitationReceived;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -119,6 +124,370 @@ class GeneralConversationTest extends TestCase
                 ->where('currentRoom.slug', 'general')
                 ->has('messages', 0)
             );
+    }
+
+    public function test_authenticated_users_can_create_group_rooms(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->post(route('rooms.store'), [
+                'title' => 'Product Ideas',
+            ])
+            ->assertRedirect('/r/product-ideas');
+
+        $conversation = Conversation::query()
+            ->where('slug', 'product-ideas')
+            ->firstOrFail();
+
+        $this->assertSame(ConversationType::Group, $conversation->type);
+        $this->assertSame('Product Ideas', $conversation->title);
+        $this->assertSame($user->id, $conversation->created_by_id);
+        $this->assertTrue(
+            $conversation->users()
+                ->whereKey($user->id)
+                ->wherePivot('role', ConversationParticipantRole::Owner->value)
+                ->exists()
+        );
+    }
+
+    public function test_group_room_titles_are_required(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->from(route('dashboard'))
+            ->post(route('rooms.store'), [
+                'title' => '   ',
+            ])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHasErrors('title');
+    }
+
+    public function test_group_room_members_can_invite_users(): void
+    {
+        Notification::fake();
+
+        $owner = User::factory()->create();
+        $invitee = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'title' => 'Product Ideas',
+            'slug' => 'product-ideas',
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach($owner->id, [
+            'role' => ConversationParticipantRole::Owner->value,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('rooms.invitations.store', $conversation), [
+                'user_ids' => [$invitee->id],
+            ])
+            ->assertRedirect('/r/product-ideas');
+
+        $this->assertDatabaseHas('invitations', [
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $invitee->id,
+            'status' => InvitationStatus::Pending->value,
+        ]);
+
+        Notification::assertSentTo(
+            $invitee,
+            fn (RoomInvitationReceived $notification): bool => $notification->invitation->conversation_id === $conversation->id
+                && $notification->invitation->sender_id === $owner->id
+        );
+    }
+
+    public function test_group_room_invites_do_not_duplicate_pending_invitations(): void
+    {
+        Notification::fake();
+
+        $owner = User::factory()->create();
+        $invitee = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'slug' => 'existing-room',
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach($owner->id, [
+            'role' => ConversationParticipantRole::Owner->value,
+        ]);
+
+        Invitation::factory()->create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $invitee->id,
+            'status' => InvitationStatus::Pending,
+        ]);
+
+        $this->actingAs($owner)
+            ->post(route('rooms.invitations.store', $conversation), [
+                'user_ids' => [$invitee->id],
+            ])
+            ->assertRedirect('/r/existing-room');
+
+        $this->assertSame(
+            1,
+            Invitation::query()
+                ->where('conversation_id', $conversation->id)
+                ->where('user_id', $invitee->id)
+                ->where('status', InvitationStatus::Pending)
+                ->count()
+        );
+
+        Notification::assertNotSentTo($invitee, RoomInvitationReceived::class);
+    }
+
+    public function test_group_room_members_cannot_invite_existing_members(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'slug' => 'existing-room',
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach([
+            $owner->id => ['role' => ConversationParticipantRole::Owner->value],
+            $member->id => ['role' => ConversationParticipantRole::Member->value],
+        ]);
+
+        $this->actingAs($owner)
+            ->from(route('rooms.show', $conversation))
+            ->post(route('rooms.invitations.store', $conversation), [
+                'user_ids' => [$member->id],
+            ])
+            ->assertRedirect(route('rooms.show', $conversation))
+            ->assertSessionHasErrors('user_ids.0');
+    }
+
+    public function test_users_can_accept_room_invitation_notifications(): void
+    {
+        $owner = User::factory()->create();
+        $invitee = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'slug' => 'product-ideas',
+            'created_by_id' => $owner->id,
+        ]);
+        $invitation = Invitation::factory()->create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $invitee->id,
+            'status' => InvitationStatus::Pending,
+        ]);
+        $invitee->notify(new RoomInvitationReceived($invitation));
+        $notification = $invitee->notifications()->firstOrFail();
+
+        $this->actingAs($invitee)
+            ->post(route('notifications.invitations.accept', $notification))
+            ->assertRedirect('/r/product-ideas');
+
+        $this->assertTrue(
+            $conversation->users()
+                ->whereKey($invitee->id)
+                ->wherePivot('role', ConversationParticipantRole::Member->value)
+                ->exists()
+        );
+        $this->assertDatabaseHas('invitations', [
+            'id' => $invitation->id,
+            'status' => InvitationStatus::Accepted->value,
+        ]);
+        $this->assertNotNull($notification->fresh()->read_at);
+    }
+
+    public function test_users_can_decline_room_invitation_notifications(): void
+    {
+        $owner = User::factory()->create();
+        $invitee = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'slug' => 'product-ideas',
+            'created_by_id' => $owner->id,
+        ]);
+        $invitation = Invitation::factory()->create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $invitee->id,
+            'status' => InvitationStatus::Pending,
+        ]);
+        $invitee->notify(new RoomInvitationReceived($invitation));
+        $notification = $invitee->notifications()->firstOrFail();
+
+        $this->actingAs($invitee)
+            ->from(route('dashboard'))
+            ->post(route('notifications.invitations.decline', $notification))
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertFalse($conversation->users()->whereKey($invitee->id)->exists());
+        $this->assertDatabaseHas('invitations', [
+            'id' => $invitation->id,
+            'status' => InvitationStatus::Declined->value,
+        ]);
+        $this->assertNotNull($notification->fresh()->read_at);
+    }
+
+    public function test_group_room_creators_can_open_settings_and_rename_room(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create(['name' => 'Member User']);
+        $pendingUser = User::factory()->create(['name' => 'Pending User']);
+        $availableUser = User::factory()->create(['name' => 'Available User']);
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'title' => 'Old Name',
+            'slug' => 'old-name',
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach([
+            $owner->id => ['role' => ConversationParticipantRole::Owner->value],
+            $member->id => ['role' => ConversationParticipantRole::Member->value],
+        ]);
+        Invitation::factory()->create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $pendingUser->id,
+            'status' => InvitationStatus::Pending,
+        ]);
+
+        $this->actingAs($owner)
+            ->get(route('rooms.settings.edit', $conversation))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('RoomSettings')
+                ->where('room.title', 'Old Name')
+                ->where('room.slug', 'old-name')
+                ->has('members', 2)
+                ->has('pendingInvitations', 1)
+                ->where('pendingInvitations.0.name', 'Pending User')
+                ->has('availableUsers', 1)
+                ->where('availableUsers.0.id', $availableUser->id)
+            );
+
+        $this->actingAs($owner)
+            ->patch(route('rooms.update', $conversation), [
+                'title' => 'New Name',
+            ])
+            ->assertRedirect('/r/old-name');
+
+        $this->assertDatabaseHas('conversations', [
+            'id' => $conversation->id,
+            'title' => 'New Name',
+        ]);
+    }
+
+    public function test_group_room_creators_can_remove_members(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach([
+            $owner->id => ['role' => ConversationParticipantRole::Owner->value],
+            $member->id => ['role' => ConversationParticipantRole::Member->value],
+        ]);
+
+        $this->actingAs($owner)
+            ->from(route('rooms.settings.edit', $conversation))
+            ->delete(route('rooms.members.destroy', [$conversation, $member]))
+            ->assertRedirect(route('rooms.settings.edit', $conversation));
+
+        $this->assertFalse($conversation->users()->whereKey($member->id)->exists());
+        $this->assertTrue($conversation->users()->whereKey($owner->id)->exists());
+    }
+
+    public function test_group_room_creators_can_cancel_pending_invitations(): void
+    {
+        $owner = User::factory()->create();
+        $invitee = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach($owner->id, [
+            'role' => ConversationParticipantRole::Owner->value,
+        ]);
+        $invitation = Invitation::factory()->create([
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $invitee->id,
+            'status' => InvitationStatus::Pending,
+        ]);
+
+        $this->actingAs($owner)
+            ->from(route('rooms.settings.edit', $conversation))
+            ->delete(route('rooms.invitations.destroy', [$conversation, $invitation]))
+            ->assertRedirect(route('rooms.settings.edit', $conversation));
+
+        $this->assertDatabaseHas('invitations', [
+            'id' => $invitation->id,
+            'status' => InvitationStatus::Cancelled->value,
+        ]);
+    }
+
+    public function test_non_creators_cannot_manage_group_room_settings(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach([
+            $owner->id => ['role' => ConversationParticipantRole::Owner->value],
+            $member->id => ['role' => ConversationParticipantRole::Member->value],
+        ]);
+
+        $this->actingAs($member)
+            ->get(route('rooms.settings.edit', $conversation))
+            ->assertNotFound();
+
+        $this->actingAs($member)
+            ->patch(route('rooms.update', $conversation), [
+                'title' => 'Unauthorized Name',
+            ])
+            ->assertForbidden();
+    }
+
+    public function test_group_room_members_can_leave_room(): void
+    {
+        $owner = User::factory()->create();
+        $member = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach([
+            $owner->id => ['role' => ConversationParticipantRole::Owner->value],
+            $member->id => ['role' => ConversationParticipantRole::Member->value],
+        ]);
+
+        $this->actingAs($member)
+            ->delete(route('rooms.membership.destroy', $conversation))
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertFalse($conversation->users()->whereKey($member->id)->exists());
+        $this->assertTrue($conversation->users()->whereKey($owner->id)->exists());
+    }
+
+    public function test_group_room_creators_cannot_leave_their_room(): void
+    {
+        $owner = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach($owner->id, [
+            'role' => ConversationParticipantRole::Owner->value,
+        ]);
+
+        $this->actingAs($owner)
+            ->delete(route('rooms.membership.destroy', $conversation))
+            ->assertNotFound();
     }
 
     public function test_room_messages_are_loaded_from_the_database(): void

@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { Head, useHttp, usePage } from '@inertiajs/vue3';
-import { MoreVertical, Paperclip, Search, Send, Smile } from 'lucide-vue-next';
+import { Head, router, useHttp, usePage } from '@inertiajs/vue3';
+import { LogOut, MoreVertical, Paperclip, Search, Send, Settings, Smile } from 'lucide-vue-next';
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     type CurrentRoom,
     type Message,
@@ -9,6 +15,8 @@ import {
     useMessengerStore,
 } from '@/composables/useMessengerStore';
 import { store as storeMessage } from '@/routes/rooms/messages';
+import { destroy as leaveRoom } from '@/routes/rooms/membership';
+import { edit as editRoomSettings } from '@/routes/rooms/settings';
 import type { Auth } from '@/types';
 
 const props = defineProps<{
@@ -97,6 +105,22 @@ const submitMessage = async () => {
         },
     });
 };
+
+const openRoomSettings = () => {
+    if (!props.currentRoom) {
+        return;
+    }
+
+    router.visit(editRoomSettings.url(props.currentRoom.slug));
+};
+
+const leaveCurrentRoom = () => {
+    if (!props.currentRoom) {
+        return;
+    }
+
+    router.delete(leaveRoom.url(props.currentRoom.slug));
+};
 </script>
 
 <template>
@@ -128,9 +152,43 @@ const submitMessage = async () => {
                 >
                     <Search class="size-6" />
                 </button>
+                <DropdownMenu v-if="currentRoom">
+                    <DropdownMenuTrigger :as-child="true">
+                        <button
+                            type="button"
+                            class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
+                            aria-label="More options"
+                        >
+                            <MoreVertical class="size-6" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="w-48">
+                        <DropdownMenuItem
+                            v-if="currentRoom.type === 'group' && currentRoom.can_manage"
+                            class="cursor-pointer"
+                            @select="openRoomSettings"
+                        >
+                            <Settings class="size-4" />
+                            Room settings
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            v-else-if="currentRoom.type === 'group'"
+                            class="cursor-pointer text-[#ba1a1a] focus:text-[#ba1a1a]"
+                            @select="leaveCurrentRoom"
+                        >
+                            <LogOut class="size-4" />
+                            Leave room
+                        </DropdownMenuItem>
+                        <DropdownMenuItem v-else disabled>
+                            No actions available
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
                 <button
+                    v-else
                     class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
                     aria-label="More options"
+                    disabled
                 >
                     <MoreVertical class="size-6" />
                 </button>

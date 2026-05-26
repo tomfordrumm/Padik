@@ -14,8 +14,11 @@ class NotificationData
         return [
             'id' => $notification->id,
             'type' => $notification->type,
-            'title' => 'New direct message',
+            'title' => $notification->data['title'] ?? 'Notification',
             'body' => $notification->data['body'] ?? null,
+            'invitation_id' => $notification->data['invitation_id'] ?? null,
+            'conversation_id' => $notification->data['conversation_id'] ?? null,
+            'room_title' => $notification->data['room_title'] ?? null,
             'sender_id' => $notification->data['sender_id'] ?? null,
             'sender_name' => $notification->data['sender_name'] ?? null,
             'action_url' => $notification->data['action_url'] ?? null,
