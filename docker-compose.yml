@@ -10,7 +10,6 @@ services:
       - .:/var/www/html
       - vendor:/var/www/html/vendor
       - node_modules:/var/www/html/node_modules
-      - public_build:/var/www/html/public/build
     depends_on:
       - redis
     restart: unless-stopped
@@ -83,4 +82,3 @@ volumes:
   redis_data:
   vendor:
   node_modules:
-  public_build:
