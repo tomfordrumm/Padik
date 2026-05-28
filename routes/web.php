@@ -21,7 +21,7 @@ Route::inertia('/', 'Welcome', [
 ])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::inertia('dashboard', 'Conversation')->name('dashboard');
     Route::get('users/{user}', UserProfileController::class)->name('users.show');
     Route::get('dms/{user}', DirectMessageController::class)->name('direct-messages.show');
     Route::post('secret-chats/{user}', [SecretChatController::class, 'store'])->name('secret-chats.store');

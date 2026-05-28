@@ -50,7 +50,7 @@ class RoomController extends Controller
                 'last_read_at' => now(),
             ]);
 
-        return Inertia::render('Dashboard', [
+        return Inertia::render('Conversation', [
             'currentRoom' => [
                 'id' => $conversation->id,
                 'title' => $this->titleFor($conversation, $request->user()),

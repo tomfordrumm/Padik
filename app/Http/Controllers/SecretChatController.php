@@ -49,7 +49,7 @@ class SecretChatController extends Controller
                 ->first()
                 ?->user;
 
-        return Inertia::render('Dashboard', [
+        return Inertia::render('Conversation', [
             'currentRoom' => [
                 'id' => $conversation->id,
                 'title' => $peer?->name ?? 'Secret chat',

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\ConversationType;
 use App\Enums\InvitationStatus;
+use App\Events\SecretChatKeyUpdated;
 use App\Events\SecretChatMessageSent;
 use App\Models\Conversation;
 use App\Models\Invitation;
@@ -100,7 +101,7 @@ class SecretChatTest extends TestCase
             ->get(route('secret-chats.show', ['conversation' => $conversation->slug]))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->component('Dashboard')
+                ->component('Conversation')
                 ->where('currentRoom.type', ConversationType::Secret->value)
                 ->where('currentRoom.title', 'Alice')
                 ->has('messages', 0)
@@ -110,6 +111,8 @@ class SecretChatTest extends TestCase
 
     public function test_secret_chat_participant_can_publish_public_key(): void
     {
+        Event::fake([SecretChatKeyUpdated::class]);
+
         $user = User::factory()->create();
         $recipient = User::factory()->create();
         $conversation = Conversation::factory()->secret()->create(['slug' => 'secret-thread']);
@@ -135,6 +138,14 @@ class SecretChatTest extends TestCase
             'user_id' => $user->id,
             'secret_key_fingerprint' => $fingerprint,
         ]);
+
+        Event::assertDispatched(
+            SecretChatKeyUpdated::class,
+            fn (SecretChatKeyUpdated $event): bool => $event->conversation->is($conversation)
+                && $event->user->is($user)
+                && $event->publicKey === $publicKey
+                && $event->fingerprint === $fingerprint
+        );
     }
 
     public function test_secret_chat_public_key_endpoint_returns_json_for_http_requests(): void

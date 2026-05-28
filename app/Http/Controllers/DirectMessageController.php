@@ -27,7 +27,7 @@ class DirectMessageController extends Controller
             ->where('data->sender_id', $user->id)
             ->update(['read_at' => now()]);
 
-        return Inertia::render('Dashboard', [
+        return Inertia::render('Conversation', [
             'currentRoom' => [
                 'id' => $conversation->id,
                 'title' => $user->name,

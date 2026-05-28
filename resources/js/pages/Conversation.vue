@@ -1,0 +1,474 @@
+<script setup lang="ts">
+import { Head, Link, router, useHttp, usePage } from '@inertiajs/vue3';
+import {
+    LogOut,
+    MoreVertical,
+    Paperclip,
+    Search,
+    Send,
+    Settings,
+    Smile,
+} from 'lucide-vue-next';
+import { computed, nextTick, ref, watch } from 'vue';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useConversationRealtime } from '@/composables/useConversationRealtime';
+import { useMessengerStore } from '@/composables/useMessengerStore';
+import type {
+    CurrentRoom,
+    Message,
+    MessagePayload,
+} from '@/composables/useMessengerStore';
+import {
+    formatSafetyNumber,
+    useSecretChat,
+} from '@/composables/useSecretChat';
+import { destroy as leaveRoom } from '@/routes/rooms/membership';
+import { store as storeMessage } from '@/routes/rooms/messages';
+import { edit as editRoomSettings } from '@/routes/rooms/settings';
+import { store as storeSecretChatMessage } from '@/routes/secret-chats/messages';
+import { show as showUserProfile } from '@/routes/users';
+import type { Auth, SecretChatMessagePayload, SecretChatProps } from '@/types';
+
+const props = defineProps<{
+    currentRoom?: CurrentRoom;
+    messages?: Message[];
+    secretChat?: SecretChatProps;
+}>();
+
+const messageForm = useHttp({
+    body: '',
+});
+
+const page = usePage();
+const currentUserId = Number((page.props.auth as Auth).user.id);
+const messenger = useMessengerStore(currentUserId);
+const visibleMessages = messenger.messages;
+const messagesScroll = ref<HTMLElement | null>(null);
+const currentRoom = computed(() => props.currentRoom);
+const secretChat = computed(() => props.secretChat);
+const isSecretRoom = computed(() => currentRoom.value?.type === 'secret');
+
+const {
+    fingerprint: secretFingerprint,
+    safetyNumber: secretSafetyNumber,
+    sharedKey: secretSharedKey,
+    status: secretStatus,
+    applyParticipant: applySecretParticipant,
+    decryptMessage: decryptSecretMessage,
+    encryptMessage: encryptSecretMessage,
+    setup: setupSecretChat,
+    synchronizeSender: synchronizeSecretChatSender,
+} = useSecretChat(currentRoom, secretChat, currentUserId);
+
+const isOwnMessage = (message: Message): boolean => message.own === true;
+
+const scrollMessagesToBottom = async (): Promise<void> => {
+    await nextTick();
+
+    if (messagesScroll.value) {
+        messagesScroll.value.scrollTop = messagesScroll.value.scrollHeight;
+    }
+};
+
+const applyMessage = (payload: MessagePayload): void => {
+    messenger.applyMessage(payload);
+    void scrollMessagesToBottom();
+};
+
+const applySecretMessage = async (
+    event: SecretChatMessagePayload,
+): Promise<void> => {
+    if (!currentRoom.value || event.message.sender_id === currentUserId) {
+        return;
+    }
+
+    await synchronizeSecretChatSender(event.message.sender_fingerprint);
+
+    const body = await decryptSecretMessage(
+        event.message.ciphertext,
+        event.message.iv,
+    );
+
+    messenger.applyMessage({
+        message: {
+            id: event.message.id,
+            sender_id: event.message.sender_id,
+            author: event.message.author,
+            body,
+            time: event.message.time,
+            own: false,
+        },
+        conversation: {
+            id: currentRoom.value.id,
+            slug: currentRoom.value.slug,
+            type: currentRoom.value.type,
+            direct_user_id: currentRoom.value.direct_user_id,
+        },
+    });
+    void scrollMessagesToBottom();
+};
+
+useConversationRealtime(currentRoom, {
+    onRoomMessage: applyMessage,
+    onSecretChatMessage: applySecretMessage,
+    onSecretChatKeyUpdated: async (event) => {
+        applySecretParticipant(event.participant);
+        await setupSecretChat();
+    },
+});
+
+watch(
+    () => [props.currentRoom, props.messages] as const,
+    ([room, messages]) => {
+        messenger.syncCurrentConversation(room, messages);
+        void scrollMessagesToBottom();
+    },
+    { immediate: true },
+);
+
+const submitSecretMessage = async (body: string): Promise<void> => {
+    if (!currentRoom.value || !secretFingerprint.value) {
+        return;
+    }
+
+    const encryptedMessage = await encryptSecretMessage(body);
+
+    await useHttp({
+        ...encryptedMessage,
+        sender_fingerprint: secretFingerprint.value,
+    }).post(storeSecretChatMessage.url(currentRoom.value.slug), {
+        onSuccess: async (data) => {
+            const payload = data as {
+                message: {
+                    id: string;
+                    sender_id: number;
+                    author: string;
+                    time: string;
+                };
+            };
+
+            messenger.applyMessage({
+                message: {
+                    id: payload.message.id,
+                    sender_id: payload.message.sender_id,
+                    author: payload.message.author,
+                    body,
+                    time: payload.message.time,
+                    own: true,
+                },
+                conversation: {
+                    id: currentRoom.value!.id,
+                    slug: currentRoom.value!.slug,
+                    type: currentRoom.value!.type,
+                    direct_user_id: currentRoom.value!.direct_user_id,
+                },
+            });
+            messageForm.reset();
+            await scrollMessagesToBottom();
+        },
+    });
+};
+
+const submitRoomMessage = async (): Promise<void> => {
+    if (!currentRoom.value) {
+        return;
+    }
+
+    await messageForm.post(storeMessage.url(currentRoom.value.slug), {
+        onSuccess: (data) => {
+            applyMessage(data as MessagePayload);
+            messageForm.reset();
+        },
+    });
+};
+
+const submitMessage = async (): Promise<void> => {
+    if (!currentRoom.value || messageForm.processing) {
+        return;
+    }
+
+    const body = messageForm.body.trim();
+
+    if (!body) {
+        return;
+    }
+
+    messageForm.body = body;
+
+    if (isSecretRoom.value) {
+        await submitSecretMessage(body);
+
+        return;
+    }
+
+    await submitRoomMessage();
+};
+
+const openRoomSettings = (): void => {
+    if (!currentRoom.value) {
+        return;
+    }
+
+    router.visit(editRoomSettings.url(currentRoom.value.slug));
+};
+
+const leaveCurrentRoom = (): void => {
+    if (!currentRoom.value) {
+        return;
+    }
+
+    router.delete(leaveRoom.url(currentRoom.value.slug));
+};
+</script>
+
+<template>
+    <Head title="Padik" />
+
+    <section class="flex h-dvh min-w-0 flex-col overflow-hidden bg-white">
+        <header
+            class="flex h-16 shrink-0 items-center justify-between border-b border-[#bbc9cb] bg-white px-6"
+        >
+            <div class="flex flex-col">
+                <h1 class="text-lg leading-6 font-bold text-[#171d1e]">
+                    {{ currentRoom?.title ?? 'Conversation' }}
+                </h1>
+                <span class="text-[11px] text-[#6c797c]">
+                    {{
+                        currentRoom?.type === 'direct'
+                            ? 'Direct message'
+                            : currentRoom?.type === 'secret'
+                              ? 'Secret chat'
+                              : currentRoom
+                                ? 'Room conversation'
+                                : 'Select a room'
+                    }}
+                </span>
+            </div>
+
+            <div class="flex items-center gap-1">
+                <button
+                    class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
+                    aria-label="Search messages"
+                >
+                    <Search class="size-6" />
+                </button>
+                <DropdownMenu v-if="currentRoom">
+                    <DropdownMenuTrigger :as-child="true">
+                        <button
+                            type="button"
+                            class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
+                            aria-label="More options"
+                        >
+                            <MoreVertical class="size-6" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" class="w-48">
+                        <DropdownMenuItem
+                            v-if="
+                                currentRoom.type === 'group' &&
+                                currentRoom.can_manage
+                            "
+                            class="cursor-pointer"
+                            @select="openRoomSettings"
+                        >
+                            <Settings class="size-4" />
+                            Room settings
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            v-else-if="currentRoom.type === 'group'"
+                            class="cursor-pointer text-[#ba1a1a] focus:text-[#ba1a1a]"
+                            @select="leaveCurrentRoom"
+                        >
+                            <LogOut class="size-4" />
+                            Leave room
+                        </DropdownMenuItem>
+                        <DropdownMenuItem v-else disabled>
+                            No actions available
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <button
+                    v-else
+                    class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
+                    aria-label="More options"
+                    disabled
+                >
+                    <MoreVertical class="size-6" />
+                </button>
+            </div>
+        </header>
+
+        <div
+            ref="messagesScroll"
+            class="chat-scroll flex-1 overflow-y-auto px-6 py-8"
+        >
+            <div v-if="currentRoom" class="mb-9 flex justify-center">
+                <span
+                    class="rounded-full bg-[#dee3e4] px-4 py-1.5 text-[11px] font-bold text-[#6c797c]"
+                >
+                    {{
+                        visibleMessages.length ? 'Messages' : 'No messages yet'
+                    }}
+                </span>
+            </div>
+
+            <div
+                v-if="currentRoom?.type === 'secret'"
+                class="mx-auto mb-8 max-w-3xl rounded-lg border border-[#bbc9cb]/40 bg-[#eff5f5] p-4 text-sm text-[#171d1e]"
+            >
+                <p class="font-bold text-[#007681]">
+                    {{ secretStatus }}
+                </p>
+                <p
+                    v-if="secretSafetyNumber"
+                    class="mt-2 text-xs text-[#6c797c]"
+                >
+                    Safety number:
+                    <span class="font-mono text-[#171d1e]">
+                        {{ formatSafetyNumber(secretSafetyNumber) }}
+                    </span>
+                </p>
+            </div>
+
+            <div v-if="currentRoom && visibleMessages.length" class="space-y-8">
+                <article
+                    v-for="message in visibleMessages"
+                    :key="message.id"
+                    class="flex gap-4"
+                    :class="
+                        isOwnMessage(message) ? 'justify-end' : 'justify-start'
+                    "
+                >
+                    <span
+                        v-if="!isOwnMessage(message)"
+                        class="mt-1 grid size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white"
+                    >
+                        {{ message.author[0] }}
+                    </span>
+
+                    <div
+                        class="flex max-w-[min(52rem,78%)] flex-col gap-1"
+                        :class="
+                            isOwnMessage(message) ? 'items-end' : 'items-start'
+                        "
+                    >
+                        <Link
+                            v-if="!isOwnMessage(message)"
+                            :href="showUserProfile(message.sender_id)"
+                            class="text-sm font-bold text-[#007681]"
+                        >
+                            {{ message.author }}
+                        </Link>
+
+                        <div
+                            class="min-w-0 px-4 py-3 shadow-sm"
+                            :class="
+                                isOwnMessage(message)
+                                    ? 'rounded-2xl rounded-tr-none bg-[#007681] text-white'
+                                    : 'rounded-2xl rounded-tl-none border border-[#bbc9cb]/30 bg-[#eff5f5] text-[#171d1e]'
+                            "
+                        >
+                            <p class="text-sm leading-6 md:text-base">
+                                {{ message.body }}
+                            </p>
+                            <span
+                                class="mt-1 block text-right text-[10px]"
+                                :class="
+                                    isOwnMessage(message)
+                                        ? 'text-white/70'
+                                        : 'text-[#6c797c]'
+                                "
+                            >
+                                {{ message.time }}
+                            </span>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <div
+                v-else
+                class="flex h-full items-center justify-center text-sm text-[#6c797c]"
+            >
+                {{
+                    currentRoom
+                        ? 'There are no messages in this room yet.'
+                        : 'Select a room to start chatting.'
+                }}
+            </div>
+        </div>
+
+        <footer
+            v-if="currentRoom"
+            class="border-t border-[#bbc9cb]/30 bg-white p-4"
+        >
+            <form
+                class="mx-auto flex max-w-5xl items-end gap-3"
+                @submit.prevent="submitMessage"
+            >
+                <button
+                    type="button"
+                    class="grid size-12 shrink-0 place-items-center rounded-full text-[#6c797c] transition-colors hover:text-[#007681]"
+                    aria-label="Attach file"
+                >
+                    <Paperclip class="size-6" />
+                </button>
+
+                <div class="relative flex-1">
+                    <textarea
+                        v-model="messageForm.body"
+                        class="max-h-32 min-h-12 w-full resize-none rounded-2xl border-0 bg-[#eff5f5] px-5 py-3 pr-12 text-sm text-[#171d1e] placeholder:text-[#718083] focus:ring-0 focus:outline-none"
+                        placeholder="Write a message..."
+                        rows="1"
+                    />
+                    <p
+                        v-if="messageForm.errors.body"
+                        class="mt-1 px-2 text-xs text-red-600"
+                    >
+                        {{ messageForm.errors.body }}
+                    </p>
+                    <button
+                        type="button"
+                        class="absolute right-3 bottom-2.5 grid size-8 place-items-center rounded-full text-[#6c797c] transition-colors hover:text-[#007681]"
+                        aria-label="Choose emoji"
+                    >
+                        <Smile class="size-6" />
+                    </button>
+                </div>
+
+                <button
+                    type="submit"
+                    class="grid size-12 shrink-0 place-items-center rounded-full bg-[#007681] text-white shadow-md transition-all hover:bg-[#006874] active:scale-95"
+                    :disabled="
+                        messageForm.processing ||
+                        !messageForm.body.trim() ||
+                        (currentRoom.type === 'secret' && !secretSharedKey)
+                    "
+                    aria-label="Send message"
+                >
+                    <Send class="size-6" />
+                </button>
+            </form>
+        </footer>
+    </section>
+</template>
+
+<style scoped>
+.chat-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+    background: #dee3e4;
+    border-radius: 999px;
+}
+</style>
