@@ -190,7 +190,11 @@ export function useMessengerStore(currentUserId: number) {
             items: [notification, ...state.notifications.items].slice(0, 20),
         };
 
-        if (notification.sender_id && notification.body) {
+        if (
+            notification.sender_id &&
+            notification.body &&
+            notification.type.endsWith('DirectMessageReceived')
+        ) {
             state.directMessageUsers = replaceById(
                 state.directMessageUsers,
                 notification.sender_id,
@@ -239,6 +243,26 @@ export function useMessengerStore(currentUserId: number) {
         };
     };
 
+    const markNotificationRead = (notificationId: string): void => {
+        const readAt = new Date().toISOString();
+
+        state.notifications = {
+            ...state.notifications,
+            unread_count: state.notifications.items.filter(
+                (notification) =>
+                    !notification.read_at && notification.id !== notificationId,
+            ).length,
+            items: state.notifications.items.map((notification) =>
+                notification.id === notificationId
+                    ? {
+                          ...notification,
+                          read_at: notification.read_at ?? readAt,
+                      }
+                    : notification,
+            ),
+        };
+    };
+
     return {
         rooms: computed(() => state.rooms),
         directMessageUsers: computed(() => state.directMessageUsers),
@@ -251,5 +275,6 @@ export function useMessengerStore(currentUserId: number) {
         appendNotification,
         markNotificationsRead,
         markSenderNotificationsRead,
+        markNotificationRead,
     };
 }

@@ -40,6 +40,10 @@ class DirectMessageController extends Controller
                 ->oldest()
                 ->get()
                 ->map(fn ($message): array => MessageData::fromMessage($message, $request->user())),
+            'mentionableUsers' => [[
+                'id' => $user->id,
+                'name' => $user->name,
+            ]],
         ]);
     }
 }

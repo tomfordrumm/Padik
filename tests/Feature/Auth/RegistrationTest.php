@@ -36,7 +36,7 @@ class RegistrationTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $response->assertRedirect(route('rooms.show', ['conversation' => 'general'], absolute: false));
 
         $general = Conversation::query()
             ->where('type', ConversationType::General)

@@ -12,6 +12,7 @@ use App\Models\Conversation;
 use App\Models\Invitation;
 use App\Models\Message;
 use App\Models\User;
+use App\Notifications\MentionReceived;
 use App\Notifications\RoomInvitationReceived;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -55,7 +56,7 @@ class GeneralConversationTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get(route('dashboard'))
+            ->get(route('rooms.show', ['conversation' => 'general']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('rooms', 1)
@@ -96,7 +97,7 @@ class GeneralConversationTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get(route('dashboard'))
+            ->get(route('rooms.show', ['conversation' => 'general']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('rooms', 1)
@@ -156,11 +157,11 @@ class GeneralConversationTest extends TestCase
         $user = User::factory()->create();
 
         $this->actingAs($user)
-            ->from(route('dashboard'))
+            ->from(route('rooms.show', ['conversation' => 'general']))
             ->post(route('rooms.store'), [
                 'title' => '   ',
             ])
-            ->assertRedirect(route('dashboard'))
+            ->assertRedirect(route('rooms.show', ['conversation' => 'general']))
             ->assertSessionHasErrors('title');
     }
 
@@ -198,6 +199,37 @@ class GeneralConversationTest extends TestCase
             fn (RoomInvitationReceived $notification): bool => $notification->invitation->conversation_id === $conversation->id
                 && $notification->invitation->sender_id === $owner->id
         );
+    }
+
+    public function test_group_room_invitation_from_user_profile_redirects_back_to_profile(): void
+    {
+        Notification::fake();
+
+        $owner = User::factory()->create();
+        $invitee = User::factory()->create();
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Group,
+            'title' => 'Product Ideas',
+            'slug' => 'product-ideas',
+            'created_by_id' => $owner->id,
+        ]);
+        $conversation->users()->attach($owner->id, [
+            'role' => ConversationParticipantRole::Owner->value,
+        ]);
+
+        $this->actingAs($owner)
+            ->from(route('users.show', $invitee))
+            ->post(route('rooms.invitations.store', $conversation), [
+                'user_ids' => [$invitee->id],
+            ])
+            ->assertRedirect(route('users.show', $invitee));
+
+        $this->assertDatabaseHas('invitations', [
+            'conversation_id' => $conversation->id,
+            'sender_id' => $owner->id,
+            'user_id' => $invitee->id,
+            'status' => InvitationStatus::Pending->value,
+        ]);
     }
 
     public function test_group_room_invites_do_not_duplicate_pending_invitations(): void
@@ -317,9 +349,9 @@ class GeneralConversationTest extends TestCase
         $notification = $invitee->notifications()->firstOrFail();
 
         $this->actingAs($invitee)
-            ->from(route('dashboard'))
+            ->from(route('rooms.show', ['conversation' => 'general']))
             ->post(route('notifications.invitations.decline', $notification))
-            ->assertRedirect(route('dashboard'));
+            ->assertRedirect(route('rooms.show', ['conversation' => 'general']));
 
         $this->assertFalse($conversation->users()->whereKey($invitee->id)->exists());
         $this->assertDatabaseHas('invitations', [
@@ -468,7 +500,7 @@ class GeneralConversationTest extends TestCase
 
         $this->actingAs($member)
             ->delete(route('rooms.membership.destroy', $conversation))
-            ->assertRedirect(route('dashboard'));
+            ->assertRedirect(route('rooms.show', ['conversation' => 'general']));
 
         $this->assertFalse($conversation->users()->whereKey($member->id)->exists());
         $this->assertTrue($conversation->users()->whereKey($owner->id)->exists());
@@ -510,6 +542,7 @@ class GeneralConversationTest extends TestCase
                 ->where('messages.0.sender_id', $user->id)
                 ->where('messages.0.body', 'Hello General.')
                 ->where('messages.0.own', true)
+                ->has('mentionableUsers', 0)
             );
     }
 
@@ -601,6 +634,82 @@ class GeneralConversationTest extends TestCase
             'user_id' => $user->id,
             'body' => 'Posted without a page visit.',
         ]);
+    }
+
+    public function test_room_page_shares_mentionable_participants(): void
+    {
+        $user = User::factory()->create();
+        $alice = User::factory()->create(['name' => 'Alice']);
+        $bob = User::factory()->create(['name' => 'Bob']);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($alice);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($bob);
+
+        $this->actingAs($user)
+            ->get('/r/general')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('mentionableUsers', 2)
+                ->where('mentionableUsers.0.name', 'Alice')
+                ->where('mentionableUsers.1.name', 'Bob')
+            );
+    }
+
+    public function test_mentioning_a_room_participant_creates_a_database_notification(): void
+    {
+        $sender = User::factory()->create(['name' => 'Tom']);
+        $mentioned = User::factory()->create(['name' => 'Alice']);
+        $unmentioned = User::factory()->create(['name' => 'Bob']);
+        $outsider = User::factory()->create(['name' => 'Outsider']);
+        $generalConversation = $this->app->make(EnsureGeneralConversation::class);
+        $generalConversation->addUser($sender);
+        $generalConversation->addUser($mentioned);
+        $generalConversation->addUser($unmentioned);
+        $general = Conversation::query()->where('slug', 'general')->firstOrFail();
+
+        $this->actingAs($sender)
+            ->postJson('/r/general/messages', [
+                'body' => 'Please check this @Alice @Alice, not @Bobcat or @Outsider.',
+            ])
+            ->assertCreated();
+
+        $message = Message::query()->latest('id')->firstOrFail();
+        $notification = $mentioned->notifications()->firstOrFail();
+
+        $this->assertSame(MentionReceived::class, $notification->type);
+        $this->assertSame($message->id, $notification->data['message_id']);
+        $this->assertSame($general->id, $notification->data['conversation_id']);
+        $this->assertSame($sender->id, $notification->data['sender_id']);
+        $this->assertSame($sender->name, $notification->data['sender_name']);
+        $this->assertSame(
+            route('rooms.show', $general).'#message-'.$message->id,
+            $notification->data['action_url'],
+        );
+        $this->assertSame(0, $sender->notifications()->count());
+        $this->assertSame(0, $unmentioned->notifications()->count());
+        $this->assertSame(0, $outsider->notifications()->count());
+    }
+
+    public function test_user_can_mark_a_single_notification_as_read(): void
+    {
+        $sender = User::factory()->create();
+        $recipient = User::factory()->create(['name' => 'Alice']);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($sender);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($recipient);
+
+        $this->actingAs($sender)
+            ->postJson('/r/general/messages', [
+                'body' => 'Read this @Alice.',
+            ])
+            ->assertCreated();
+
+        $notification = $recipient->notifications()->firstOrFail();
+
+        $this->actingAs($recipient)
+            ->post(route('notifications.item.read', $notification))
+            ->assertRedirect();
+
+        $this->assertSame(0, $recipient->fresh()->unreadNotifications()->count());
     }
 
     public function test_sending_a_room_message_broadcasts_it_to_room_members(): void

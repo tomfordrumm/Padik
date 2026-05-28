@@ -66,6 +66,15 @@ class RoomController extends Controller
                 ->oldest()
                 ->get()
                 ->map(fn ($message): array => MessageData::fromMessage($message, $request->user())),
+            'mentionableUsers' => $conversation->users()
+                ->select(['users.id', 'users.name'])
+                ->whereKeyNot($request->user()->id)
+                ->orderBy('name')
+                ->get()
+                ->map(fn (User $user): array => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                ]),
         ]);
     }
 

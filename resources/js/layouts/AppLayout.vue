@@ -34,10 +34,11 @@ import {
     type MessagePayload,
     useMessengerStore,
 } from '@/composables/useMessengerStore';
-import { dashboard, logout } from '@/routes';
+import { logout } from '@/routes';
 import { show as showDirectMessage } from '@/routes/direct-messages';
 import { read as readNotifications } from '@/routes/notifications';
 import { read as readNotificationsFromSender } from '@/routes/notifications/from-sender';
+import { read as readNotification } from '@/routes/notifications/item';
 import {
     accept as acceptInvitation,
     decline as declineInvitation,
@@ -132,7 +133,7 @@ const notifications = computed<NotificationNav>(
     () => messenger.notifications.value,
 );
 
-type BroadcastDirectMessageNotification = NotificationItem & {
+type BroadcastNotification = NotificationItem & {
     id?: string;
 };
 
@@ -233,6 +234,23 @@ const openNotification = (notification: NotificationItem) => {
 
     closeNotifications();
 
+    if (isMentionNotification(notification)) {
+        router.post(
+            readNotification.url(notification.id),
+            {},
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    messenger.markNotificationRead(notification.id);
+
+                    router.visit(actionUrl);
+                },
+            },
+        );
+
+        return;
+    }
+
     if (!notification.sender_id) {
         router.visit(actionUrl);
 
@@ -260,6 +278,10 @@ const isInvitationNotification = (notification: NotificationItem): boolean =>
         notification.type.endsWith('SecretChatInvitationReceived')) &&
     Boolean(notification.invitation_id);
 
+const isMentionNotification = (notification: NotificationItem): boolean =>
+    notification.type.endsWith('MentionReceived') &&
+    Boolean(notification.message_id);
+
 const acceptInvitationNotification = (notification: NotificationItem) => {
     router.post(
         acceptInvitation.url(notification.id),
@@ -284,9 +306,7 @@ const declineInvitationNotification = (notification: NotificationItem) => {
     );
 };
 
-const appendNotification = (
-    notification: BroadcastDirectMessageNotification,
-) => {
+const appendNotification = (notification: BroadcastNotification) => {
     const notificationId = notification.id ?? crypto.randomUUID();
     const currentNotifications = notifications.value;
 
@@ -307,6 +327,7 @@ const appendNotification = (
         sender_name: notification.sender_name,
         action_url: notification.action_url,
         invitation_id: notification.invitation_id,
+        message_id: notification.message_id,
         conversation_id: notification.conversation_id,
         room_title: notification.room_title,
         read_at: null,
@@ -424,7 +445,7 @@ onBeforeUnmount(() => {
                     </button>
 
                     <Link
-                        :href="dashboard()"
+                        :href="showRoom('general')"
                         class="text-xl font-bold tracking-tight text-[#007681]"
                     >
                         Padik

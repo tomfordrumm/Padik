@@ -17,6 +17,7 @@ class NotificationData
             'title' => $notification->data['title'] ?? 'Notification',
             'body' => $notification->data['body'] ?? null,
             'invitation_id' => $notification->data['invitation_id'] ?? null,
+            'message_id' => $notification->data['message_id'] ?? null,
             'conversation_id' => $notification->data['conversation_id'] ?? null,
             'room_title' => $notification->data['room_title'] ?? null,
             'sender_id' => $notification->data['sender_id'] ?? null,

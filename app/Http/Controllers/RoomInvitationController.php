@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\RoomInvitationReceived;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class RoomInvitationController extends Controller
 {
@@ -43,7 +44,9 @@ class RoomInvitationController extends Controller
 
         $previousPath = parse_url(url()->previous(), PHP_URL_PATH);
 
-        if ($previousPath === route('rooms.settings.edit', $conversation, false)) {
+        if ($previousPath === route('rooms.settings.edit', $conversation, false)
+            || Str::startsWith($previousPath, '/users/')
+        ) {
             return back();
         }
 

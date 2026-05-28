@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { LockKeyhole, MessageCircle, ShieldCheck } from 'lucide-vue-next';
-import { dashboard, login, register } from '@/routes';
+import { login, register } from '@/routes';
+import { show as showRoom } from '@/routes/rooms';
 
 withDefaults(
     defineProps<{
@@ -65,7 +66,7 @@ withDefaults(
 
             <Link
                 v-if="$page.props.auth.user"
-                :href="dashboard()"
+                :href="showRoom('general')"
                 prefetch
                 class="mt-10 inline-flex min-h-14 items-center justify-center rounded-full bg-[#007681] px-8 text-base font-bold text-white shadow-lg shadow-[#007681]/20 transition hover:bg-[#006874] focus:ring-2 focus:ring-[#006874]/30 focus:outline-none active:scale-95"
             >

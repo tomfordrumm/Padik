@@ -35,6 +35,7 @@ export type NotificationItem = {
     title: string;
     body: string | null;
     invitation_id?: number;
+    message_id?: number;
     conversation_id?: number;
     room_title?: string;
     sender_id: number | null;

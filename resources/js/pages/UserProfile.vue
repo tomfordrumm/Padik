@@ -1,17 +1,67 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { ArrowLeft, LockKeyhole, Mail, UserPlus } from 'lucide-vue-next';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ArrowLeft, Check, LockKeyhole, Mail, UserPlus } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
-import { dashboard } from '@/routes';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { show as showDirectMessage } from '@/routes/direct-messages';
+import { show as showRoom } from '@/routes/rooms';
+import { store as storeRoomInvitation } from '@/routes/rooms/invitations';
 import { store as storeSecretChat } from '@/routes/secret-chats';
+
+type InvitableRoom = {
+    id: number;
+    title: string;
+    slug: string;
+};
 
 const props = defineProps<{
     profileUser: {
         id: number;
         name: string;
     };
+    invitableRooms: InvitableRoom[];
 }>();
+
+const isInviteDialogOpen = ref(false);
+const selectedRoomSlug = ref<string | null>(null);
+const selectedRoom = computed(
+    () =>
+        props.invitableRooms.find((room) => room.slug === selectedRoomSlug.value) ??
+        null,
+);
+const inviteForm = useForm<{ user_ids: number[] }>({
+    user_ids: [props.profileUser.id],
+});
+
+const openInviteDialog = (): void => {
+    selectedRoomSlug.value = props.invitableRooms[0]?.slug ?? null;
+    inviteForm.clearErrors();
+    isInviteDialogOpen.value = true;
+};
+
+const sendInvitation = (): void => {
+    if (!selectedRoom.value) {
+        return;
+    }
+
+    inviteForm.user_ids = [props.profileUser.id];
+    inviteForm.post(storeRoomInvitation.url(selectedRoom.value.slug), {
+        preserveScroll: true,
+        onSuccess: () => {
+            isInviteDialogOpen.value = false;
+            selectedRoomSlug.value = null;
+            inviteForm.reset();
+        },
+    });
+};
 </script>
 
 <template>
@@ -22,9 +72,9 @@ const props = defineProps<{
             class="flex h-16 shrink-0 items-center gap-3 border-b border-[#bbc9cb] bg-white px-6"
         >
             <Link
-                :href="dashboard()"
+                :href="showRoom('general')"
                 class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
-                aria-label="Back to dashboard"
+                aria-label="Back to General"
             >
                 <ArrowLeft class="size-5" />
             </Link>
@@ -60,7 +110,11 @@ const props = defineProps<{
                             Отправить сообщение
                         </Link>
                     </Button>
-                    <Button type="button" variant="outline">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="openInviteDialog"
+                    >
                         <UserPlus class="size-4" />
                         Пригласить в группу
                     </Button>
@@ -77,5 +131,91 @@ const props = defineProps<{
                 </div>
             </div>
         </main>
+
+        <Dialog v-model:open="isInviteDialogOpen">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Пригласить в группу</DialogTitle>
+                    <DialogDescription>
+                        Выберите группу, куда отправить приглашение для
+                        {{ profileUser.name }}.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div
+                    v-if="invitableRooms.length"
+                    class="max-h-72 overflow-y-auto rounded-lg border border-[#bbc9cb]/70"
+                >
+                    <button
+                        v-for="room in invitableRooms"
+                        :key="room.id"
+                        type="button"
+                        class="flex w-full items-center gap-3 border-b border-[#bbc9cb]/40 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#eff5f5] focus:bg-[#eff5f5] focus:outline-none"
+                        :class="
+                            selectedRoomSlug === room.slug ? 'bg-[#eff5f5]' : ''
+                        "
+                        @click="selectedRoomSlug = room.slug"
+                    >
+                        <span
+                            class="grid size-9 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white"
+                        >
+                            {{ room.title[0] }}
+                        </span>
+                        <span class="min-w-0 flex-1">
+                            <span
+                                class="block truncate text-sm font-semibold text-[#171d1e]"
+                            >
+                                {{ room.title }}
+                            </span>
+                        </span>
+                        <span
+                            class="grid size-6 shrink-0 place-items-center rounded-full border"
+                            :class="
+                                selectedRoomSlug === room.slug
+                                    ? 'border-[#007681] bg-[#007681] text-white'
+                                    : 'border-[#9ba9ac] bg-white text-transparent'
+                            "
+                        >
+                            <Check class="size-4" />
+                        </span>
+                    </button>
+                </div>
+
+                <p
+                    v-else
+                    class="rounded-lg bg-[#eff5f5] px-4 py-5 text-sm text-[#6c797c]"
+                >
+                    Нет групп, куда можно пригласить этого пользователя.
+                </p>
+
+                <p
+                    v-if="inviteForm.errors.user_ids"
+                    class="text-sm font-medium text-[#ba1a1a]"
+                >
+                    {{ inviteForm.errors.user_ids }}
+                </p>
+
+                <DialogFooter>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        @click="isInviteDialogOpen = false"
+                    >
+                        Отмена
+                    </Button>
+                    <Button
+                        type="button"
+                        class="bg-[#007681] hover:bg-[#006874]"
+                        :disabled="
+                            inviteForm.processing || selectedRoomSlug === null
+                        "
+                        @click="sendInvitation"
+                    >
+                        <UserPlus class="size-4" />
+                        Пригласить
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </section>
 </template>

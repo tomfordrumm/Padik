@@ -37,8 +37,14 @@ import type { Auth, SecretChatMessagePayload, SecretChatProps } from '@/types';
 const props = defineProps<{
     currentRoom?: CurrentRoom;
     messages?: Message[];
+    mentionableUsers?: MentionableUser[];
     secretChat?: SecretChatProps;
 }>();
+
+type MentionableUser = {
+    id: number;
+    name: string;
+};
 
 const messageForm = useHttp({
     body: '',
@@ -49,9 +55,12 @@ const currentUserId = Number((page.props.auth as Auth).user.id);
 const messenger = useMessengerStore(currentUserId);
 const visibleMessages = messenger.messages;
 const messagesScroll = ref<HTMLElement | null>(null);
+const messageInput = ref<HTMLTextAreaElement | null>(null);
+const activeMentionIndex = ref(0);
 const currentRoom = computed(() => props.currentRoom);
 const secretChat = computed(() => props.secretChat);
 const isSecretRoom = computed(() => currentRoom.value?.type === 'secret');
+const mentionableUsers = computed(() => props.mentionableUsers ?? []);
 
 const {
     fingerprint: secretFingerprint,
@@ -75,9 +84,124 @@ const scrollMessagesToBottom = async (): Promise<void> => {
     }
 };
 
+const scrollMessageIntoView = async (messageId: string): Promise<boolean> => {
+    await nextTick();
+
+    const messageElement = document.getElementById(`message-${messageId}`);
+
+    if (!messageElement) {
+        return false;
+    }
+
+    messageElement.scrollIntoView({ block: 'center' });
+    messageElement.classList.add('message-target-highlight');
+
+    window.setTimeout(() => {
+        messageElement.classList.remove('message-target-highlight');
+    }, 1800);
+
+    return true;
+};
+
+const scrollToHashMessageOrBottom = async (): Promise<void> => {
+    const messageId = window.location.hash.match(/^#message-(.+)$/)?.[1];
+
+    if (
+        messageId &&
+        (await scrollMessageIntoView(decodeURIComponent(messageId)))
+    ) {
+        return;
+    }
+
+    await scrollMessagesToBottom();
+};
+
 const applyMessage = (payload: MessagePayload): void => {
     messenger.applyMessage(payload);
     void scrollMessagesToBottom();
+};
+
+const activeMention = computed(() => {
+    if (!messageInput.value || isSecretRoom.value) {
+        return null;
+    }
+
+    const cursorPosition = messageInput.value.selectionStart;
+    const beforeCursor = messageForm.body.slice(0, cursorPosition);
+    const match = beforeCursor.match(/(^|\s)@([\w.-]*)$/);
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        start: cursorPosition - match[2].length - 1,
+        query: match[2],
+    };
+});
+
+const mentionSuggestions = computed(() => {
+    const mention = activeMention.value;
+
+    if (!mention) {
+        return [];
+    }
+
+    const query = mention.query.toLocaleLowerCase();
+
+    return mentionableUsers.value
+        .filter((user) => user.name.toLocaleLowerCase().includes(query))
+        .slice(0, 6);
+});
+
+const selectMention = async (user: MentionableUser): Promise<void> => {
+    const mention = activeMention.value;
+
+    if (!mention || !messageInput.value) {
+        return;
+    }
+
+    const cursorPosition = messageInput.value.selectionStart;
+    const beforeMention = messageForm.body.slice(0, mention.start);
+    const afterMention = messageForm.body.slice(cursorPosition);
+    const replacement = `@${user.name} `;
+
+    messageForm.body = `${beforeMention}${replacement}${afterMention}`;
+
+    await nextTick();
+
+    const nextCursorPosition = beforeMention.length + replacement.length;
+    messageInput.value.focus();
+    messageInput.value.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    activeMentionIndex.value = 0;
+};
+
+const handleMessageKeydown = (event: KeyboardEvent): void => {
+    if (mentionSuggestions.value.length === 0) {
+        return;
+    }
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeMentionIndex.value =
+            (activeMentionIndex.value + 1) % mentionSuggestions.value.length;
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeMentionIndex.value =
+            (activeMentionIndex.value - 1 + mentionSuggestions.value.length) %
+            mentionSuggestions.value.length;
+    }
+
+    if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        void selectMention(mentionSuggestions.value[activeMentionIndex.value]);
+    }
+
+    if (event.key === 'Escape') {
+        activeMentionIndex.value = 0;
+    }
 };
 
 const applySecretMessage = async (
@@ -126,10 +250,16 @@ watch(
     () => [props.currentRoom, props.messages] as const,
     ([room, messages]) => {
         messenger.syncCurrentConversation(room, messages);
-        void scrollMessagesToBottom();
+        void scrollToHashMessageOrBottom();
     },
     { immediate: true },
 );
+
+watch(mentionSuggestions, (suggestions) => {
+    if (activeMentionIndex.value >= suggestions.length) {
+        activeMentionIndex.value = 0;
+    }
+});
 
 const submitSecretMessage = async (body: string): Promise<void> => {
     if (!currentRoom.value || !secretFingerprint.value) {
@@ -339,6 +469,7 @@ const leaveCurrentRoom = (): void => {
                 <article
                     v-for="message in visibleMessages"
                     :key="message.id"
+                    :id="`message-${message.id}`"
                     class="flex gap-4"
                     :class="
                         isOwnMessage(message) ? 'justify-end' : 'justify-start'
@@ -420,11 +551,46 @@ const leaveCurrentRoom = (): void => {
                 </button>
 
                 <div class="relative flex-1">
+                    <div
+                        v-if="mentionSuggestions.length > 0"
+                        class="absolute right-0 bottom-full left-0 z-20 mb-2 overflow-hidden rounded-lg border border-[#bbc9cb] bg-white shadow-xl"
+                    >
+                        <button
+                            v-for="(user, index) in mentionSuggestions"
+                            :key="user.id"
+                            type="button"
+                            class="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors"
+                            :class="
+                                index === activeMentionIndex
+                                    ? 'bg-[#eff5f5]'
+                                    : 'bg-white hover:bg-[#eff5f5]'
+                            "
+                            @mousedown.prevent="selectMention(user)"
+                        >
+                            <span
+                                class="grid size-8 shrink-0 place-items-center rounded-full bg-[#007681] text-xs font-bold text-white"
+                            >
+                                {{ user.name[0] }}
+                            </span>
+                            <span class="min-w-0">
+                                <span
+                                    class="block truncate text-sm font-bold text-[#171d1e]"
+                                >
+                                    {{ user.name }}
+                                </span>
+                                <span class="block text-xs text-[#6c797c]">
+                                    @{{ user.name }}
+                                </span>
+                            </span>
+                        </button>
+                    </div>
                     <textarea
+                        ref="messageInput"
                         v-model="messageForm.body"
                         class="max-h-32 min-h-12 w-full resize-none rounded-2xl border-0 bg-[#eff5f5] px-5 py-3 pr-12 text-sm text-[#171d1e] placeholder:text-[#718083] focus:ring-0 focus:outline-none"
                         placeholder="Write a message..."
                         rows="1"
+                        @keydown="handleMessageKeydown"
                     />
                     <p
                         v-if="messageForm.errors.body"
@@ -470,5 +636,20 @@ const leaveCurrentRoom = (): void => {
 .chat-scroll::-webkit-scrollbar-thumb {
     background: #dee3e4;
     border-radius: 999px;
+}
+
+:global(.message-target-highlight) {
+    animation: message-target-highlight 1.8s ease-out;
+}
+
+@keyframes message-target-highlight {
+    0%,
+    45% {
+        filter: drop-shadow(0 0 0.8rem rgb(0 118 129 / 0.45));
+    }
+
+    100% {
+        filter: drop-shadow(0 0 0 rgb(0 118 129 / 0));
+    }
 }
 </style>

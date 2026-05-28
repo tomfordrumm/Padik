@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Conversations\EnsureGeneralConversation;
 use App\Enums\ConversationType;
 use App\Events\RoomMessageSent;
 use App\Models\Conversation;
@@ -184,9 +185,10 @@ class DirectMessageConversationTest extends TestCase
         ]);
 
         $recipient->notify(new DirectMessageReceived($message));
+        $this->app->make(EnsureGeneralConversation::class)->addUser($recipient);
 
         $this->actingAs($recipient)
-            ->get(route('dashboard'))
+            ->get(route('rooms.show', ['conversation' => 'general']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('notifications.unread_count', 1)
@@ -280,9 +282,10 @@ class DirectMessageConversationTest extends TestCase
         ]);
 
         $user->notify(new DirectMessageReceived($message));
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
 
         $this->actingAs($user)
-            ->get(route('dashboard'))
+            ->get(route('rooms.show', ['conversation' => 'general']))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('directMessageUsers.0.id', $sender->id)

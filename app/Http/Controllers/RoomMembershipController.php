@@ -20,6 +20,6 @@ class RoomMembershipController extends Controller
 
         $conversation->users()->detach($request->user()->id);
 
-        return to_route('dashboard');
+        return to_route('rooms.show', ['conversation' => 'general']);
     }
 }

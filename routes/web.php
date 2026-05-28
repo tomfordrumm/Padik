@@ -21,7 +21,7 @@ Route::inertia('/', 'Welcome', [
 ])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'Conversation')->name('dashboard');
+    Route::redirect('dashboard', '/r/general')->name('dashboard');
     Route::get('users/{user}', UserProfileController::class)->name('users.show');
     Route::get('dms/{user}', DirectMessageController::class)->name('direct-messages.show');
     Route::post('secret-chats/{user}', [SecretChatController::class, 'store'])->name('secret-chats.store');
@@ -29,6 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('secret-chats/{conversation:slug}/key', [SecretChatKeyController::class, 'store'])->name('secret-chats.key.store');
     Route::post('secret-chats/{conversation:slug}/messages', [SecretChatMessageController::class, 'store'])->name('secret-chats.messages.store');
     Route::post('notifications/read', [NotificationController::class, 'markAllAsRead'])->name('notifications.read');
+    Route::post('notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->name('notifications.item.read');
     Route::post('notifications/from/{sender}/read', [NotificationController::class, 'markFromSenderAsRead'])->name('notifications.from-sender.read');
     Route::post('notifications/{notification}/accept-invitation', [InvitationResponseController::class, 'accept'])->name('notifications.invitations.accept');
     Route::post('notifications/{notification}/decline-invitation', [InvitationResponseController::class, 'decline'])->name('notifications.invitations.decline');
