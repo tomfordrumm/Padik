@@ -127,6 +127,93 @@ class GeneralConversationTest extends TestCase
             );
     }
 
+    public function test_opening_a_room_exposes_the_first_unread_message_before_marking_it_read(): void
+    {
+        $user = User::factory()->create();
+        $sender = User::factory()->create();
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($sender);
+        $general = Conversation::query()->where('slug', 'general')->firstOrFail();
+
+        $lastReadAt = now()->subHours(2);
+
+        $general->participants()
+            ->where('user_id', $user->id)
+            ->update([
+                'unread_count' => 2,
+                'last_read_at' => $lastReadAt,
+            ]);
+
+        Message::factory()->create([
+            'conversation_id' => $general->id,
+            'user_id' => $sender->id,
+            'body' => 'Already read.',
+            'created_at' => $lastReadAt->copy()->subMinute(),
+        ]);
+        $firstUnread = Message::factory()->create([
+            'conversation_id' => $general->id,
+            'user_id' => $sender->id,
+            'body' => 'First unread.',
+            'created_at' => $lastReadAt->copy()->addMinute(),
+        ]);
+        Message::factory()->create([
+            'conversation_id' => $general->id,
+            'user_id' => $sender->id,
+            'body' => 'Second unread.',
+            'created_at' => $lastReadAt->copy()->addMinutes(2),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('rooms.show', $general))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('firstUnreadMessageId', $firstUnread->id)
+                ->where('messages.1.body', 'First unread.')
+            );
+
+        $this->assertDatabaseHas('conversation_participants', [
+            'conversation_id' => $general->id,
+            'user_id' => $user->id,
+            'unread_count' => 0,
+        ]);
+    }
+
+    public function test_unread_marker_uses_unread_count_when_the_room_has_no_last_read_time(): void
+    {
+        $user = User::factory()->create();
+        $sender = User::factory()->create();
+        $this->app->make(EnsureGeneralConversation::class)->addUser($user);
+        $this->app->make(EnsureGeneralConversation::class)->addUser($sender);
+        $general = Conversation::query()->where('slug', 'general')->firstOrFail();
+
+        Message::factory()->create([
+            'conversation_id' => $general->id,
+            'user_id' => $sender->id,
+            'body' => 'Historical message.',
+            'created_at' => now()->subDay(),
+        ]);
+        $firstUnread = Message::factory()->create([
+            'conversation_id' => $general->id,
+            'user_id' => $sender->id,
+            'body' => 'Only unread message.',
+            'created_at' => now(),
+        ]);
+
+        $general->participants()
+            ->where('user_id', $user->id)
+            ->update([
+                'unread_count' => 1,
+                'last_read_at' => null,
+            ]);
+
+        $this->actingAs($user)
+            ->get(route('rooms.show', $general))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('firstUnreadMessageId', $firstUnread->id)
+            );
+    }
+
     public function test_authenticated_users_can_create_group_rooms(): void
     {
         $user = User::factory()->create();

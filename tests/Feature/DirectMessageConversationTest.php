@@ -65,6 +65,58 @@ class DirectMessageConversationTest extends TestCase
         $this->assertSame(1, Conversation::query()->where('type', ConversationType::Direct)->count());
     }
 
+    public function test_opening_a_direct_message_exposes_the_first_unread_message_before_marking_it_read(): void
+    {
+        $user = User::factory()->create();
+        $sender = User::factory()->create(['name' => 'Alice']);
+        $conversation = Conversation::factory()->create([
+            'type' => ConversationType::Direct,
+            'title' => null,
+            'slug' => 'dm-unread-marker',
+            'created_by_id' => $sender->id,
+        ]);
+        $lastReadAt = now()->subHours(2);
+
+        $conversation->users()->attach($user->id, [
+            'unread_count' => 2,
+            'last_read_at' => $lastReadAt,
+        ]);
+        $conversation->users()->attach($sender->id);
+
+        Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $sender->id,
+            'body' => 'Already read.',
+            'created_at' => $lastReadAt->copy()->subMinute(),
+        ]);
+        $firstUnread = Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $sender->id,
+            'body' => 'First unread DM.',
+            'created_at' => $lastReadAt->copy()->addMinute(),
+        ]);
+        Message::factory()->create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $sender->id,
+            'body' => 'Second unread DM.',
+            'created_at' => $lastReadAt->copy()->addMinutes(2),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('direct-messages.show', $sender))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('firstUnreadMessageId', $firstUnread->id)
+                ->where('messages.1.body', 'First unread DM.')
+            );
+
+        $this->assertDatabaseHas('conversation_participants', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+            'unread_count' => 0,
+        ]);
+    }
+
     public function test_direct_messages_are_loaded_and_can_be_sent(): void
     {
         Event::fake([RoomMessageSent::class]);

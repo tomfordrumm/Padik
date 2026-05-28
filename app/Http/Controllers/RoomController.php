@@ -43,12 +43,9 @@ class RoomController extends Controller
             404,
         );
 
-        $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->update([
-                'unread_count' => 0,
-                'last_read_at' => now(),
-            ]);
+        $firstUnreadMessageId = $conversation->firstUnreadMessageIdFor($request->user());
+
+        $conversation->markReadFor($request->user());
 
         return Inertia::render('Conversation', [
             'currentRoom' => [
@@ -66,6 +63,7 @@ class RoomController extends Controller
                 ->oldest()
                 ->get()
                 ->map(fn ($message): array => MessageData::fromMessage($message, $request->user())),
+            'firstUnreadMessageId' => $firstUnreadMessageId,
             'mentionableUsers' => $conversation->users()
                 ->select(['users.id', 'users.name'])
                 ->whereKeyNot($request->user()->id)

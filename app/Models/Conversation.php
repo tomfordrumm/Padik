@@ -52,6 +52,49 @@ class Conversation extends Model
         return $this->hasMany(Message::class);
     }
 
+    public function firstUnreadMessageIdFor(User $user): ?int
+    {
+        $participant = $this->participants()
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $participant || $participant->unread_count === 0) {
+            return null;
+        }
+
+        $messages = $this->messages()
+            ->where('user_id', '!=', $user->id)
+            ->oldest();
+
+        if ($participant->last_read_at) {
+            $messages->where('created_at', '>', $participant->last_read_at);
+
+            $messageId = $messages->value('id');
+
+            return $messageId ? (int) $messageId : null;
+        }
+
+        $message = $this->messages()
+            ->where('user_id', '!=', $user->id)
+            ->latest()
+            ->limit($participant->unread_count)
+            ->get(['id'])
+            ->sortBy('id')
+            ->first();
+
+        return $message ? (int) $message->id : null;
+    }
+
+    public function markReadFor(User $user): void
+    {
+        $this->participants()
+            ->where('user_id', $user->id)
+            ->update([
+                'unread_count' => 0,
+                'last_read_at' => now(),
+            ]);
+    }
+
     public function invitations(): HasMany
     {
         return $this->hasMany(Invitation::class);

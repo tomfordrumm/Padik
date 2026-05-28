@@ -23,10 +23,7 @@ import type {
     Message,
     MessagePayload,
 } from '@/composables/useMessengerStore';
-import {
-    formatSafetyNumber,
-    useSecretChat,
-} from '@/composables/useSecretChat';
+import { formatSafetyNumber, useSecretChat } from '@/composables/useSecretChat';
 import { destroy as leaveRoom } from '@/routes/rooms/membership';
 import { store as storeMessage } from '@/routes/rooms/messages';
 import { edit as editRoomSettings } from '@/routes/rooms/settings';
@@ -37,6 +34,7 @@ import type { Auth, SecretChatMessagePayload, SecretChatProps } from '@/types';
 const props = defineProps<{
     currentRoom?: CurrentRoom;
     messages?: Message[];
+    firstUnreadMessageId?: number | string | null;
     mentionableUsers?: MentionableUser[];
     secretChat?: SecretChatProps;
 }>();
@@ -103,7 +101,25 @@ const scrollMessageIntoView = async (messageId: string): Promise<boolean> => {
     return true;
 };
 
-const scrollToHashMessageOrBottom = async (): Promise<void> => {
+const scrollUnreadMarkerIntoView = async (
+    messageId: number | string,
+): Promise<boolean> => {
+    await nextTick();
+
+    const markerElement = document.getElementById(
+        `new-messages-marker-${messageId}`,
+    );
+
+    if (!markerElement) {
+        return false;
+    }
+
+    markerElement.scrollIntoView({ block: 'center' });
+
+    return true;
+};
+
+const scrollToInitialMessageOrBottom = async (): Promise<void> => {
     const messageId = window.location.hash.match(/^#message-(.+)$/)?.[1];
 
     if (
@@ -113,8 +129,20 @@ const scrollToHashMessageOrBottom = async (): Promise<void> => {
         return;
     }
 
+    if (
+        props.firstUnreadMessageId &&
+        (await scrollUnreadMarkerIntoView(props.firstUnreadMessageId))
+    ) {
+        return;
+    }
+
     await scrollMessagesToBottom();
 };
+
+const isFirstUnreadMessage = (message: Message): boolean =>
+    props.firstUnreadMessageId !== null &&
+    props.firstUnreadMessageId !== undefined &&
+    String(message.id) === String(props.firstUnreadMessageId);
 
 const applyMessage = (payload: MessagePayload): void => {
     messenger.applyMessage(payload);
@@ -172,7 +200,10 @@ const selectMention = async (user: MentionableUser): Promise<void> => {
 
     const nextCursorPosition = beforeMention.length + replacement.length;
     messageInput.value.focus();
-    messageInput.value.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    messageInput.value.setSelectionRange(
+        nextCursorPosition,
+        nextCursorPosition,
+    );
     activeMentionIndex.value = 0;
 };
 
@@ -247,10 +278,15 @@ useConversationRealtime(currentRoom, {
 });
 
 watch(
-    () => [props.currentRoom, props.messages] as const,
+    () =>
+        [
+            props.currentRoom,
+            props.messages,
+            props.firstUnreadMessageId,
+        ] as const,
     ([room, messages]) => {
         messenger.syncCurrentConversation(room, messages);
-        void scrollToHashMessageOrBottom();
+        void scrollToInitialMessageOrBottom();
     },
     { immediate: true },
 );
@@ -466,60 +502,78 @@ const leaveCurrentRoom = (): void => {
             </div>
 
             <div v-if="currentRoom && visibleMessages.length" class="space-y-8">
-                <article
-                    v-for="message in visibleMessages"
-                    :key="message.id"
-                    :id="`message-${message.id}`"
-                    class="flex gap-4"
-                    :class="
-                        isOwnMessage(message) ? 'justify-end' : 'justify-start'
-                    "
-                >
-                    <span
-                        v-if="!isOwnMessage(message)"
-                        class="mt-1 grid size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white"
-                    >
-                        {{ message.author[0] }}
-                    </span>
-
+                <template v-for="message in visibleMessages" :key="message.id">
                     <div
-                        class="flex max-w-[min(52rem,78%)] flex-col gap-1"
+                        v-if="isFirstUnreadMessage(message)"
+                        :id="`new-messages-marker-${message.id}`"
+                        class="flex items-center gap-4"
+                    >
+                        <span class="h-px flex-1 bg-[#bbc9cb]/50"></span>
+                        <span
+                            class="rounded-full bg-[#007681] px-4 py-1.5 text-[11px] font-bold tracking-wide text-white uppercase shadow-sm"
+                        >
+                            New messages
+                        </span>
+                        <span class="h-px flex-1 bg-[#bbc9cb]/50"></span>
+                    </div>
+
+                    <article
+                        :id="`message-${message.id}`"
+                        class="flex gap-4"
                         :class="
-                            isOwnMessage(message) ? 'items-end' : 'items-start'
+                            isOwnMessage(message)
+                                ? 'justify-end'
+                                : 'justify-start'
                         "
                     >
-                        <Link
+                        <span
                             v-if="!isOwnMessage(message)"
-                            :href="showUserProfile(message.sender_id)"
-                            class="text-sm font-bold text-[#007681]"
+                            class="mt-1 grid size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white"
                         >
-                            {{ message.author }}
-                        </Link>
+                            {{ message.author[0] }}
+                        </span>
 
                         <div
-                            class="min-w-0 px-4 py-3 shadow-sm"
+                            class="flex max-w-[min(52rem,78%)] flex-col gap-1"
                             :class="
                                 isOwnMessage(message)
-                                    ? 'rounded-2xl rounded-tr-none bg-[#007681] text-white'
-                                    : 'rounded-2xl rounded-tl-none border border-[#bbc9cb]/30 bg-[#eff5f5] text-[#171d1e]'
+                                    ? 'items-end'
+                                    : 'items-start'
                             "
                         >
-                            <p class="text-sm leading-6 md:text-base">
-                                {{ message.body }}
-                            </p>
-                            <span
-                                class="mt-1 block text-right text-[10px]"
+                            <Link
+                                v-if="!isOwnMessage(message)"
+                                :href="showUserProfile(message.sender_id)"
+                                class="text-sm font-bold text-[#007681]"
+                            >
+                                {{ message.author }}
+                            </Link>
+
+                            <div
+                                class="min-w-0 px-4 py-3 shadow-sm"
                                 :class="
                                     isOwnMessage(message)
-                                        ? 'text-white/70'
-                                        : 'text-[#6c797c]'
+                                        ? 'rounded-2xl rounded-tr-none bg-[#007681] text-white'
+                                        : 'rounded-2xl rounded-tl-none border border-[#bbc9cb]/30 bg-[#eff5f5] text-[#171d1e]'
                                 "
                             >
-                                {{ message.time }}
-                            </span>
+                                <p class="text-sm leading-6 md:text-base">
+                                    {{ message.body }}
+                                </p>
+                                <span
+                                    class="mt-1 block text-right text-[10px]"
+                                    :class="
+                                        isOwnMessage(message)
+                                            ? 'text-white/70'
+                                            : 'text-[#6c797c]'
+                                    "
+                                >
+                                    {{ message.time }}
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                </article>
+                    </article>
+                </template>
             </div>
 
             <div

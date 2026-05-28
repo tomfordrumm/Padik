@@ -15,12 +15,9 @@ class DirectMessageController extends Controller
     {
         $conversation = $directConversation->between($request->user(), $user);
 
-        $conversation->participants()
-            ->where('user_id', $request->user()->id)
-            ->update([
-                'unread_count' => 0,
-                'last_read_at' => now(),
-            ]);
+        $firstUnreadMessageId = $conversation->firstUnreadMessageIdFor($request->user());
+
+        $conversation->markReadFor($request->user());
 
         $request->user()
             ->unreadNotifications()
@@ -40,6 +37,7 @@ class DirectMessageController extends Controller
                 ->oldest()
                 ->get()
                 ->map(fn ($message): array => MessageData::fromMessage($message, $request->user())),
+            'firstUnreadMessageId' => $firstUnreadMessageId,
             'mentionableUsers' => [[
                 'id' => $user->id,
                 'name' => $user->name,
