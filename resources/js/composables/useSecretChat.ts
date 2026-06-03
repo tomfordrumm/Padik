@@ -71,7 +71,10 @@ const readStoredSecretKeyPair = async (
     const database = await openSecretKeyDatabase();
 
     return new Promise((resolve, reject) => {
-        const transaction = database.transaction(secretKeyStoreName, 'readonly');
+        const transaction = database.transaction(
+            secretKeyStoreName,
+            'readonly',
+        );
         const request = transaction
             .objectStore(secretKeyStoreName)
             .get(storageKey);
@@ -82,7 +85,9 @@ const readStoredSecretKeyPair = async (
             reject(transaction.error ?? new Error('Could not read key pair.'));
         };
         request.onsuccess = () =>
-            resolve((request.result as StoredSecretKeyPair | undefined) ?? null);
+            resolve(
+                (request.result as StoredSecretKeyPair | undefined) ?? null,
+            );
         request.onerror = () =>
             reject(request.error ?? new Error('Could not read key pair.'));
     });
@@ -94,7 +99,10 @@ const storeSecretKeyPair = async (
     const database = await openSecretKeyDatabase();
 
     return new Promise((resolve, reject) => {
-        const transaction = database.transaction(secretKeyStoreName, 'readwrite');
+        const transaction = database.transaction(
+            secretKeyStoreName,
+            'readwrite',
+        );
         const request = transaction
             .objectStore(secretKeyStoreName)
             .put(keyPair);
@@ -188,7 +196,9 @@ export function useSecretChat(
             }
         } catch (error) {
             keyStorageError.value =
-                error instanceof Error ? error.message : 'Unknown storage error';
+                error instanceof Error
+                    ? error.message
+                    : 'Unknown storage error';
         }
 
         const keyPair = await crypto.subtle.generateKey(
@@ -219,7 +229,9 @@ export function useSecretChat(
             keyStorageError.value = null;
         } catch (error) {
             keyStorageError.value =
-                error instanceof Error ? error.message : 'Unknown storage error';
+                error instanceof Error
+                    ? error.message
+                    : 'Unknown storage error';
         }
     };
 
@@ -260,7 +272,8 @@ export function useSecretChat(
         ) {
             sharedKey.value = null;
             safetyNumber.value = null;
-            status.value = 'Waiting for the other user to open this secret chat.';
+            status.value =
+                'Waiting for the other user to open this secret chat.';
 
             return;
         }

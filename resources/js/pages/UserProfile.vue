@@ -34,8 +34,9 @@ const isInviteDialogOpen = ref(false);
 const selectedRoomSlug = ref<string | null>(null);
 const selectedRoom = computed(
     () =>
-        props.invitableRooms.find((room) => room.slug === selectedRoomSlug.value) ??
-        null,
+        props.invitableRooms.find(
+            (room) => room.slug === selectedRoomSlug.value,
+        ) ?? null,
 );
 const inviteForm = useForm<{ user_ids: number[] }>({
     user_ids: [props.profileUser.id],

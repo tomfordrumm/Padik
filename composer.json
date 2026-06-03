@@ -1,11 +1,15 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/vue-starter-kit",
+    "name": "padik/padik",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "A self-hosted real-time messenger built with Laravel, Inertia, Vue, and Reverb.",
     "keywords": [
         "laravel",
-        "framework"
+        "inertia",
+        "messenger",
+        "reverb",
+        "self-hosted",
+        "vue"
     ],
     "license": "MIT",
     "require": {

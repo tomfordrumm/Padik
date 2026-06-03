@@ -30,22 +30,20 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toaster } from '@/components/ui/sonner';
-import {
-    type MessagePayload,
-    useMessengerStore,
-} from '@/composables/useMessengerStore';
+import { useMessengerStore } from '@/composables/useMessengerStore';
+import type { MessagePayload } from '@/composables/useMessengerStore';
 import { logout } from '@/routes';
 import { show as showDirectMessage } from '@/routes/direct-messages';
 import { read as readNotifications } from '@/routes/notifications';
 import { read as readNotificationsFromSender } from '@/routes/notifications/from-sender';
-import { read as readNotification } from '@/routes/notifications/item';
 import {
     accept as acceptInvitation,
     decline as declineInvitation,
 } from '@/routes/notifications/invitations';
+import { read as readNotification } from '@/routes/notifications/item';
 import { edit as editProfile } from '@/routes/profile';
-import { store as storeRoomInvitation } from '@/routes/rooms/invitations';
 import { show as showRoom, store as storeRoom } from '@/routes/rooms';
+import { store as storeRoomInvitation } from '@/routes/rooms/invitations';
 import type {
     Auth,
     DirectMessageUserNavItem,

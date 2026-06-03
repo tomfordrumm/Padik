@@ -5,12 +5,12 @@ import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { show as showRoom, update as updateRoom } from '@/routes/rooms';
 import {
     destroy as cancelInvitation,
     store as storeInvitation,
 } from '@/routes/rooms/invitations';
 import { destroy as removeMember } from '@/routes/rooms/members';
-import { show as showRoom, update as updateRoom } from '@/routes/rooms';
 
 type RoomSettingsUser = {
     id: number;
@@ -50,7 +50,9 @@ const inviteForm = useForm<{ user_ids: number[] }>({
 });
 
 const selectedAvailableUsers = computed(() =>
-    props.availableUsers.filter((user) => inviteForm.user_ids.includes(user.id)),
+    props.availableUsers.filter((user) =>
+        inviteForm.user_ids.includes(user.id),
+    ),
 );
 
 const submit = () => {
@@ -59,7 +61,9 @@ const submit = () => {
 
 const toggleInviteUser = (userId: number) => {
     inviteForm.user_ids = inviteForm.user_ids.includes(userId)
-        ? inviteForm.user_ids.filter((selectedUserId) => selectedUserId !== userId)
+        ? inviteForm.user_ids.filter(
+              (selectedUserId) => selectedUserId !== userId,
+          )
         : [...inviteForm.user_ids, userId];
 };
 
@@ -184,7 +188,8 @@ const removeRoomMember = (userId: number) => {
                                 Invite people
                             </h2>
                             <p class="text-sm text-[#6c797c]">
-                                Select users who are not already members or pending.
+                                Select users who are not already members or
+                                pending.
                             </p>
                         </div>
 
@@ -205,10 +210,14 @@ const removeRoomMember = (userId: number) => {
                                     {{ user.name[0] }}
                                 </span>
                                 <span class="min-w-0 flex-1">
-                                    <span class="block truncate text-sm font-semibold text-[#171d1e]">
+                                    <span
+                                        class="block truncate text-sm font-semibold text-[#171d1e]"
+                                    >
                                         {{ user.name }}
                                     </span>
-                                    <span class="block truncate text-xs text-[#6c797c]">
+                                    <span
+                                        class="block truncate text-xs text-[#6c797c]"
+                                    >
                                         {{ user.email }}
                                     </span>
                                 </span>
@@ -221,14 +230,21 @@ const removeRoomMember = (userId: number) => {
                                     "
                                 >
                                     <span
-                                        v-if="inviteForm.user_ids.includes(user.id)"
+                                        v-if="
+                                            inviteForm.user_ids.includes(
+                                                user.id,
+                                            )
+                                        "
                                         class="size-2 rounded-full bg-current"
                                     />
                                 </span>
                             </button>
                         </div>
 
-                        <p v-else class="rounded-lg bg-[#eff5f5] px-4 py-5 text-sm text-[#6c797c]">
+                        <p
+                            v-else
+                            class="rounded-lg bg-[#eff5f5] px-4 py-5 text-sm text-[#6c797c]"
+                        >
                             No users available to invite.
                         </p>
 
@@ -241,7 +257,10 @@ const removeRoomMember = (userId: number) => {
 
                         <Button
                             type="button"
-                            :disabled="inviteForm.processing || inviteForm.user_ids.length === 0"
+                            :disabled="
+                                inviteForm.processing ||
+                                inviteForm.user_ids.length === 0
+                            "
                             @click="sendInvitations"
                         >
                             <MailPlus class="size-4" />
@@ -254,25 +273,34 @@ const removeRoomMember = (userId: number) => {
                             Pending invitations
                         </h2>
 
-                        <div class="overflow-hidden rounded-lg border border-[#bbc9cb]/70">
+                        <div
+                            class="overflow-hidden rounded-lg border border-[#bbc9cb]/70"
+                        >
                             <div
                                 v-for="invitation in pendingInvitations"
                                 :key="invitation.id"
                                 class="flex items-center gap-3 border-b border-[#bbc9cb]/40 px-4 py-3 last:border-b-0"
                             >
                                 <span class="min-w-0 flex-1">
-                                    <span class="block truncate text-sm font-semibold text-[#171d1e]">
+                                    <span
+                                        class="block truncate text-sm font-semibold text-[#171d1e]"
+                                    >
                                         {{ invitation.name }}
                                     </span>
-                                    <span class="block truncate text-xs text-[#6c797c]">
-                                        {{ invitation.email }} · {{ invitation.created_at_human }}
+                                    <span
+                                        class="block truncate text-xs text-[#6c797c]"
+                                    >
+                                        {{ invitation.email }} ·
+                                        {{ invitation.created_at_human }}
                                     </span>
                                 </span>
                                 <button
                                     type="button"
                                     class="grid size-9 place-items-center rounded-full text-[#ba1a1a] transition-colors hover:bg-[#ffdad6]"
                                     aria-label="Cancel invitation"
-                                    @click="cancelPendingInvitation(invitation.id)"
+                                    @click="
+                                        cancelPendingInvitation(invitation.id)
+                                    "
                                 >
                                     <X class="size-4" />
                                 </button>
@@ -291,7 +319,9 @@ const removeRoomMember = (userId: number) => {
                             Members
                         </h2>
 
-                        <div class="overflow-hidden rounded-lg border border-[#bbc9cb]/70">
+                        <div
+                            class="overflow-hidden rounded-lg border border-[#bbc9cb]/70"
+                        >
                             <div
                                 v-for="member in members"
                                 :key="member.id"
@@ -304,7 +334,9 @@ const removeRoomMember = (userId: number) => {
                                 </span>
                                 <span class="min-w-0 flex-1">
                                     <span class="flex items-center gap-2">
-                                        <span class="truncate text-sm font-semibold text-[#171d1e]">
+                                        <span
+                                            class="truncate text-sm font-semibold text-[#171d1e]"
+                                        >
                                             {{ member.name }}
                                         </span>
                                         <span
@@ -314,7 +346,9 @@ const removeRoomMember = (userId: number) => {
                                             Owner
                                         </span>
                                     </span>
-                                    <span class="block truncate text-xs text-[#6c797c]">
+                                    <span
+                                        class="block truncate text-xs text-[#6c797c]"
+                                    >
                                         {{ member.email }}
                                     </span>
                                 </span>

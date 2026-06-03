@@ -146,7 +146,10 @@ const rightNavItems: NavItem[] = [
                     </Sheet>
                 </div>
 
-                <Link :href="showRoom('general')" class="flex items-center gap-x-2">
+                <Link
+                    :href="showRoom('general')"
+                    class="flex items-center gap-x-2"
+                >
                     <AppLogo />
                 </Link>
 

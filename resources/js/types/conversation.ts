@@ -29,7 +29,9 @@ export type SecretChatMessagePayload = {
 
 export type ConversationRealtimeHandlers = {
     onRoomMessage: (event: MessagePayload) => void;
-    onSecretChatMessage: (event: SecretChatMessagePayload) => void | Promise<void>;
+    onSecretChatMessage: (
+        event: SecretChatMessagePayload,
+    ) => void | Promise<void>;
     onSecretChatKeyUpdated: (
         event: SecretChatKeyUpdatedPayload,
     ) => void | Promise<void>;
