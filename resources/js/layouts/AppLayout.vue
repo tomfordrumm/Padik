@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toaster } from '@/components/ui/sonner';
+import { Spinner } from '@/components/ui/spinner';
 import { useMessengerStore } from '@/composables/useMessengerStore';
 import type { MessagePayload } from '@/composables/useMessengerStore';
 import { logout } from '@/routes';
@@ -51,6 +52,10 @@ import type {
     NotificationNav,
     RoomNavItem,
 } from '@/types';
+
+defineOptions({
+    inheritAttrs: false,
+});
 
 type ChatPreview = {
     id: number;
@@ -78,6 +83,8 @@ const createdRoom = ref<{ id: number; title: string; slug: string } | null>(
     null,
 );
 const notificationsMenu = ref<HTMLElement | null>(null);
+const isChatListOpen = ref(true);
+const isConversationLoading = ref(false);
 const createRoomForm = useForm({
     title: '',
 });
@@ -143,6 +150,28 @@ const closeDrawer = () => {
 
 const closeNotifications = () => {
     areNotificationsOpen.value = false;
+};
+
+const openChatList = () => {
+    isChatListOpen.value = true;
+};
+
+const closeChatList = () => {
+    isChatListOpen.value = false;
+};
+
+const stopConversationLoading = () => {
+    isConversationLoading.value = false;
+};
+
+const openConversation = (isActive: boolean) => {
+    if (isActive) {
+        stopConversationLoading();
+    } else {
+        isConversationLoading.value = true;
+    }
+
+    closeChatList();
 };
 
 const openCreateRoom = () => {
@@ -336,6 +365,7 @@ const appendNotification = (notification: BroadcastNotification) => {
 
 const handleEscape = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
+        closeChatList();
         closeDrawer();
         closeNotifications();
     }
@@ -359,9 +389,16 @@ const handleDocumentClick = (event: MouseEvent) => {
     closeNotifications();
 };
 
+let removeNavigationFinishListener: (() => void) | undefined;
+
 onMounted(() => {
     window.addEventListener('keydown', handleEscape);
+    window.addEventListener('padik:open-chat-list', openChatList);
     document.addEventListener('click', handleDocumentClick);
+    removeNavigationFinishListener = router.on(
+        'finish',
+        stopConversationLoading,
+    );
     window.Echo.private(`App.Models.User.${currentUserId}`).notification(
         appendNotification,
     );
@@ -410,12 +447,17 @@ watch(
         if (url.startsWith('/dms/')) {
             activeTab.value = 'dms';
         }
+
+        closeChatList();
+        stopConversationLoading();
     },
 );
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleEscape);
+    window.removeEventListener('padik:open-chat-list', openChatList);
     document.removeEventListener('click', handleDocumentClick);
+    removeNavigationFinishListener?.();
     window.Echo.leave(`App.Models.User.${currentUserId}`);
     messenger.rooms.value.forEach((room) =>
         window.Echo.leave(`rooms.${room.id}`),
@@ -428,7 +470,9 @@ onBeforeUnmount(() => {
         class="flex h-dvh w-full overflow-hidden bg-[#f5fafb] font-sans text-[#171d1e]"
     >
         <aside
-            class="relative z-40 flex w-full max-w-[21rem] shrink-0 flex-col border-r border-[#bbc9cb] bg-white sm:max-w-96"
+            class="h-dvh w-full shrink-0 flex-col border-r border-[#bbc9cb] bg-white sm:flex sm:w-96"
+            :class="isChatListOpen ? 'flex' : 'hidden'"
+            aria-label="Conversations"
         >
             <div class="space-y-4 border-b border-[#bbc9cb] p-4">
                 <div class="flex items-center gap-3">
@@ -445,6 +489,11 @@ onBeforeUnmount(() => {
                     <Link
                         :href="showRoom('general')"
                         class="text-xl font-bold tracking-tight text-[#007681]"
+                        @click="
+                            openConversation(
+                                page.url === showRoom.url('general'),
+                            )
+                        "
                     >
                         Padik
                     </Link>
@@ -648,6 +697,7 @@ onBeforeUnmount(() => {
                             ? 'border-l-4 border-[#007681] bg-[#006874]/5'
                             : 'border-l-4 border-transparent hover:bg-[#eff5f5]'
                     "
+                    @click="openConversation(chat.active === true)"
                 >
                     <span
                         class="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-white"
@@ -702,6 +752,7 @@ onBeforeUnmount(() => {
                             ? 'border-l-4 border-[#007681] bg-[#006874]/5'
                             : 'border-l-4 border-transparent hover:bg-[#eff5f5]'
                     "
+                    @click="openConversation(user.active === true)"
                 >
                     <span
                         class="grid size-12 shrink-0 place-items-center rounded-full text-base font-bold text-white"
@@ -752,8 +803,34 @@ onBeforeUnmount(() => {
             </div>
         </aside>
 
-        <main class="min-w-0 flex-1 overflow-hidden bg-white">
-            <slot />
+        <main
+            class="min-w-0 flex-1 overflow-hidden bg-white"
+            :class="isChatListOpen ? 'hidden sm:block' : 'block'"
+        >
+            <section
+                v-if="isConversationLoading"
+                class="flex h-dvh min-w-0 flex-col bg-white"
+                aria-live="polite"
+                aria-busy="true"
+            >
+                <header
+                    class="flex h-16 shrink-0 items-center border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
+                >
+                    <div
+                        class="h-7 w-40 animate-pulse rounded-full bg-[#eff5f5]"
+                    />
+                </header>
+
+                <div class="flex flex-1 items-center justify-center px-6">
+                    <div
+                        class="flex flex-col items-center gap-3 text-[#6c797c]"
+                    >
+                        <Spinner class="size-7 text-[#007681]" />
+                        <p class="text-sm font-medium">Loading messages...</p>
+                    </div>
+                </div>
+            </section>
+            <slot v-else />
         </main>
 
         <Teleport to="body">

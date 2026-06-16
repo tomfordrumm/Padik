@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useHttp, usePage } from '@inertiajs/vue3';
 import {
+    ArrowLeft,
     LogOut,
     MoreVertical,
     Paperclip,
@@ -30,6 +31,10 @@ import { edit as editRoomSettings } from '@/routes/rooms/settings';
 import { store as storeSecretChatMessage } from '@/routes/secret-chats/messages';
 import { show as showUserProfile } from '@/routes/users';
 import type { Auth, SecretChatMessagePayload, SecretChatProps } from '@/types';
+
+defineOptions({
+    inheritAttrs: false,
+});
 
 const props = defineProps<{
     currentRoom?: CurrentRoom;
@@ -390,6 +395,10 @@ const leaveCurrentRoom = (): void => {
 
     router.delete(leaveRoom.url(currentRoom.value.slug));
 };
+
+const openChatList = (): void => {
+    window.dispatchEvent(new CustomEvent('padik:open-chat-list'));
+};
 </script>
 
 <template>
@@ -397,26 +406,39 @@ const leaveCurrentRoom = (): void => {
 
     <section class="flex h-dvh min-w-0 flex-col overflow-hidden bg-white">
         <header
-            class="flex h-16 shrink-0 items-center justify-between border-b border-[#bbc9cb] bg-white px-6"
+            class="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
         >
-            <div class="flex flex-col">
-                <h1 class="text-lg leading-6 font-bold text-[#171d1e]">
-                    {{ currentRoom?.title ?? 'Conversation' }}
-                </h1>
-                <span class="text-[11px] text-[#6c797c]">
-                    {{
-                        currentRoom?.type === 'direct'
-                            ? 'Direct message'
-                            : currentRoom?.type === 'secret'
-                              ? 'Secret chat'
-                              : currentRoom
-                                ? 'Room conversation'
-                                : 'Select a room'
-                    }}
-                </span>
+            <div class="flex min-w-0 items-center gap-2">
+                <button
+                    type="button"
+                    class="grid size-10 shrink-0 place-items-center rounded-full text-[#171d1e] transition-colors hover:bg-[#e4e9ea] sm:hidden"
+                    aria-label="Back to conversations"
+                    @click="openChatList"
+                >
+                    <ArrowLeft class="size-5" />
+                </button>
+
+                <div class="min-w-0">
+                    <h1
+                        class="truncate text-base leading-6 font-bold text-[#171d1e] sm:text-lg"
+                    >
+                        {{ currentRoom?.title ?? 'Conversation' }}
+                    </h1>
+                    <span class="block truncate text-[11px] text-[#6c797c]">
+                        {{
+                            currentRoom?.type === 'direct'
+                                ? 'Direct message'
+                                : currentRoom?.type === 'secret'
+                                  ? 'Secret chat'
+                                  : currentRoom
+                                    ? 'Room conversation'
+                                    : 'Select a room'
+                        }}
+                    </span>
+                </div>
             </div>
 
-            <div class="flex items-center gap-1">
+            <div class="flex shrink-0 items-center gap-1">
                 <button
                     class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
                     aria-label="Search messages"
@@ -471,7 +493,7 @@ const leaveCurrentRoom = (): void => {
 
         <div
             ref="messagesScroll"
-            class="chat-scroll flex-1 overflow-y-auto px-6 py-8"
+            class="chat-scroll flex-1 overflow-y-auto px-3 py-5 sm:px-6 sm:py-8"
         >
             <div v-if="currentRoom" class="mb-9 flex justify-center">
                 <span
@@ -519,7 +541,7 @@ const leaveCurrentRoom = (): void => {
 
                     <article
                         :id="`message-${message.id}`"
-                        class="flex gap-4"
+                        class="flex gap-2 sm:gap-4"
                         :class="
                             isOwnMessage(message)
                                 ? 'justify-end'
@@ -528,13 +550,13 @@ const leaveCurrentRoom = (): void => {
                     >
                         <span
                             v-if="!isOwnMessage(message)"
-                            class="mt-1 grid size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white"
+                            class="mt-1 hidden size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white sm:grid"
                         >
                             {{ message.author[0] }}
                         </span>
 
                         <div
-                            class="flex max-w-[min(52rem,78%)] flex-col gap-1"
+                            class="flex max-w-[min(52rem,88%)] flex-col gap-1 sm:max-w-[min(52rem,78%)]"
                             :class="
                                 isOwnMessage(message)
                                     ? 'items-end'
@@ -590,21 +612,21 @@ const leaveCurrentRoom = (): void => {
 
         <footer
             v-if="currentRoom"
-            class="border-t border-[#bbc9cb]/30 bg-white p-4"
+            class="border-t border-[#bbc9cb]/30 bg-white px-3 py-3 sm:p-4"
         >
             <form
-                class="mx-auto flex max-w-5xl items-end gap-3"
+                class="mx-auto flex max-w-5xl items-end gap-2 sm:gap-3"
                 @submit.prevent="submitMessage"
             >
                 <button
                     type="button"
-                    class="grid size-12 shrink-0 place-items-center rounded-full text-[#6c797c] transition-colors hover:text-[#007681]"
+                    class="grid size-10 shrink-0 place-items-center rounded-full text-[#6c797c] transition-colors hover:text-[#007681] sm:size-12"
                     aria-label="Attach file"
                 >
-                    <Paperclip class="size-6" />
+                    <Paperclip class="size-5 sm:size-6" />
                 </button>
 
-                <div class="relative flex-1">
+                <div class="relative min-w-0 flex-1">
                     <div
                         v-if="mentionSuggestions.length > 0"
                         class="absolute right-0 bottom-full left-0 z-20 mb-2 overflow-hidden rounded-lg border border-[#bbc9cb] bg-white shadow-xl"
@@ -663,7 +685,7 @@ const leaveCurrentRoom = (): void => {
 
                 <button
                     type="submit"
-                    class="grid size-12 shrink-0 place-items-center rounded-full bg-[#007681] text-white shadow-md transition-all hover:bg-[#006874] active:scale-95"
+                    class="grid size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-white shadow-md transition-all hover:bg-[#006874] active:scale-95 sm:size-12"
                     :disabled="
                         messageForm.processing ||
                         !messageForm.body.trim() ||
@@ -671,7 +693,7 @@ const leaveCurrentRoom = (): void => {
                     "
                     aria-label="Send message"
                 >
-                    <Send class="size-6" />
+                    <Send class="size-5 sm:size-6" />
                 </button>
             </form>
         </footer>

@@ -16,6 +16,10 @@ import { show as showRoom } from '@/routes/rooms';
 import { store as storeRoomInvitation } from '@/routes/rooms/invitations';
 import { store as storeSecretChat } from '@/routes/secret-chats';
 
+defineOptions({
+    inheritAttrs: false,
+});
+
 type InvitableRoom = {
     id: number;
     title: string;

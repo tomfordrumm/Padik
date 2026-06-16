@@ -12,6 +12,10 @@ import {
 } from '@/routes/rooms/invitations';
 import { destroy as removeMember } from '@/routes/rooms/members';
 
+defineOptions({
+    inheritAttrs: false,
+});
+
 type RoomSettingsUser = {
     id: number;
     name: string;
