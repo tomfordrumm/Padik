@@ -467,10 +467,10 @@ onBeforeUnmount(() => {
 
 <template>
     <div
-        class="flex h-dvh w-full overflow-hidden bg-[#f5fafb] font-sans text-[#171d1e]"
+        class="mobile-app-shell flex h-dvh w-full overflow-hidden bg-[#f5fafb] font-sans text-[#171d1e]"
     >
         <aside
-            class="h-dvh w-full shrink-0 flex-col border-r border-[#bbc9cb] bg-white sm:flex sm:w-96"
+            class="h-dvh min-h-0 w-full shrink-0 flex-col border-r border-[#bbc9cb] bg-white sm:flex sm:w-96"
             :class="isChatListOpen ? 'flex' : 'hidden'"
             aria-label="Conversations"
         >
@@ -804,12 +804,12 @@ onBeforeUnmount(() => {
         </aside>
 
         <main
-            class="min-w-0 flex-1 overflow-hidden bg-white"
+            class="min-h-0 min-w-0 flex-1 overflow-hidden bg-white"
             :class="isChatListOpen ? 'hidden sm:block' : 'block'"
         >
             <section
                 v-if="isConversationLoading"
-                class="flex h-dvh min-w-0 flex-col bg-white"
+                class="flex h-dvh min-h-0 min-w-0 flex-col bg-white"
                 aria-live="polite"
                 aria-busy="true"
             >

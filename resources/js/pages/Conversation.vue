@@ -433,7 +433,9 @@ const openChatList = (): void => {
 <template>
     <Head title="Padik" />
 
-    <section class="flex h-dvh min-w-0 flex-col overflow-hidden bg-white">
+    <section
+        class="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden bg-white"
+    >
         <header
             class="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
         >
@@ -539,7 +541,7 @@ const openChatList = (): void => {
 
         <div
             ref="messagesScroll"
-            class="chat-scroll flex-1 overflow-y-auto px-3 py-5 sm:px-6 sm:py-8"
+            class="chat-scroll min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6 sm:py-8"
         >
             <div v-if="currentRoom" class="mb-9 flex justify-center">
                 <span
@@ -660,7 +662,7 @@ const openChatList = (): void => {
 
         <footer
             v-if="currentRoom"
-            class="border-t border-[#bbc9cb]/30 bg-white px-3 py-3 sm:p-4"
+            class="border-t border-[#bbc9cb]/30 bg-white px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4"
         >
             <form
                 class="mx-auto flex max-w-5xl items-end gap-2 sm:gap-3"

@@ -170,3 +170,18 @@
         @apply bg-background text-foreground;
     }
 }
+
+@media (width < 48rem) {
+    html:has(.mobile-app-shell),
+    body:has(.mobile-app-shell),
+    body:has(.mobile-app-shell) #app {
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+    }
+
+    body:has(.mobile-app-shell) {
+        width: 100%;
+        touch-action: manipulation;
+    }
+}
