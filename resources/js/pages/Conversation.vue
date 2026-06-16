@@ -3,12 +3,14 @@ import { Head, Link, router, useHttp, usePage } from '@inertiajs/vue3';
 import {
     ArrowLeft,
     LogOut,
+    LockKeyhole,
     MoreVertical,
     Paperclip,
     Search,
     Send,
     Settings,
     Smile,
+    User,
 } from 'lucide-vue-next';
 import { computed, nextTick, ref, watch } from 'vue';
 import {
@@ -28,6 +30,7 @@ import { formatSafetyNumber, useSecretChat } from '@/composables/useSecretChat';
 import { destroy as leaveRoom } from '@/routes/rooms/membership';
 import { store as storeMessage } from '@/routes/rooms/messages';
 import { edit as editRoomSettings } from '@/routes/rooms/settings';
+import { store as storeSecretChat } from '@/routes/secret-chats';
 import { store as storeSecretChatMessage } from '@/routes/secret-chats/messages';
 import { show as showUserProfile } from '@/routes/users';
 import type { Auth, SecretChatMessagePayload, SecretChatProps } from '@/types';
@@ -63,6 +66,16 @@ const activeMentionIndex = ref(0);
 const currentRoom = computed(() => props.currentRoom);
 const secretChat = computed(() => props.secretChat);
 const isSecretRoom = computed(() => currentRoom.value?.type === 'secret');
+const currentDirectUserId = computed(() =>
+    currentRoom.value?.type === 'direct' || currentRoom.value?.type === 'secret'
+        ? currentRoom.value.direct_user_id
+        : null,
+);
+const canStartSecretChat = computed(
+    () =>
+        currentRoom.value?.type === 'direct' &&
+        Boolean(currentDirectUserId.value),
+);
 const mentionableUsers = computed(() => props.mentionableUsers ?? []);
 
 const {
@@ -388,6 +401,22 @@ const openRoomSettings = (): void => {
     router.visit(editRoomSettings.url(currentRoom.value.slug));
 };
 
+const openCurrentDirectProfile = (): void => {
+    if (!currentDirectUserId.value) {
+        return;
+    }
+
+    router.visit(showUserProfile.url(currentDirectUserId.value));
+};
+
+const startSecretChat = (): void => {
+    if (!currentDirectUserId.value) {
+        return;
+    }
+
+    router.post(storeSecretChat.url(currentDirectUserId.value));
+};
+
 const leaveCurrentRoom = (): void => {
     if (!currentRoom.value) {
         return;
@@ -475,6 +504,23 @@ const openChatList = (): void => {
                             <LogOut class="size-4" />
                             Leave room
                         </DropdownMenuItem>
+                        <template v-else-if="currentDirectUserId">
+                            <DropdownMenuItem
+                                class="cursor-pointer"
+                                @select="openCurrentDirectProfile"
+                            >
+                                <User class="size-4" />
+                                See profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                v-if="canStartSecretChat"
+                                class="cursor-pointer"
+                                @select="startSecretChat"
+                            >
+                                <LockKeyhole class="size-4" />
+                                Start secret chat
+                            </DropdownMenuItem>
+                        </template>
                         <DropdownMenuItem v-else disabled>
                             No actions available
                         </DropdownMenuItem>
@@ -548,12 +594,14 @@ const openChatList = (): void => {
                                 : 'justify-start'
                         "
                     >
-                        <span
+                        <Link
                             v-if="!isOwnMessage(message)"
-                            class="mt-1 hidden size-10 shrink-0 place-items-center rounded-full bg-[#007681] text-sm font-bold text-white sm:grid"
+                            :href="showUserProfile(message.sender_id)"
+                            class="mt-1 grid size-8 shrink-0 place-items-center rounded-full bg-[#007681] text-xs font-bold text-white transition-colors hover:bg-[#006874] focus:ring-2 focus:ring-[#006874]/25 focus:outline-none sm:size-10 sm:text-sm"
+                            :aria-label="`Open ${message.author}'s profile`"
                         >
                             {{ message.author[0] }}
-                        </span>
+                        </Link>
 
                         <div
                             class="flex max-w-[min(52rem,88%)] flex-col gap-1 sm:max-w-[min(52rem,78%)]"

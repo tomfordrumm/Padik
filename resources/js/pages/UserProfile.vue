@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Check, LockKeyhole, Mail, UserPlus } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,16 @@ const sendInvitation = (): void => {
         },
     });
 };
+
+const goBack = (): void => {
+    if (window.history.length > 1) {
+        window.history.back();
+
+        return;
+    }
+
+    router.visit(showRoom.url('general'));
+};
 </script>
 
 <template>
@@ -76,13 +86,14 @@ const sendInvitation = (): void => {
         <header
             class="flex h-16 shrink-0 items-center gap-3 border-b border-[#bbc9cb] bg-white px-6"
         >
-            <Link
-                :href="showRoom('general')"
+            <button
+                type="button"
                 class="grid size-10 place-items-center rounded-full text-[#6c797c] transition-colors hover:bg-[#e4e9ea]"
-                aria-label="Back to General"
+                aria-label="Go back"
+                @click="goBack"
             >
                 <ArrowLeft class="size-5" />
-            </Link>
+            </button>
             <div>
                 <h1 class="text-lg leading-6 font-bold text-[#171d1e]">
                     User profile
