@@ -392,20 +392,75 @@ const handleDocumentClick = (event: MouseEvent) => {
 let removeNavigationFinishListener: (() => void) | undefined;
 let viewportResizeFrame: number | undefined;
 let mobileShellMediaQuery: MediaQueryList | undefined;
+let scrollResetFrame: number | undefined;
+
+const inputSelector = 'input, textarea, select, [contenteditable="true"]';
+
+const isMobileAppShellActive = (): boolean =>
+    mobileShellMediaQuery?.matches === true;
+
+const isFocusedInput = (): boolean =>
+    document.activeElement instanceof HTMLElement &&
+    document.activeElement.matches(inputSelector);
+
+const resetWindowScroll = (): void => {
+    if (!isMobileAppShellActive()) {
+        return;
+    }
+
+    if (window.scrollX !== 0 || window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+    }
+};
+
+const scheduleWindowScrollReset = (): void => {
+    if (scrollResetFrame) {
+        window.cancelAnimationFrame(scrollResetFrame);
+    }
+
+    scrollResetFrame = window.requestAnimationFrame(() => {
+        scrollResetFrame = undefined;
+        resetWindowScroll();
+    });
+};
 
 const updateMobileAppViewportHeight = (): void => {
-    if (!mobileShellMediaQuery?.matches) {
+    if (!isMobileAppShellActive()) {
         document.documentElement.style.removeProperty('--app-viewport-height');
+        document.documentElement.style.removeProperty('--app-viewport-width');
+        document.documentElement.style.removeProperty(
+            '--app-viewport-offset-left',
+        );
+        document.documentElement.style.removeProperty(
+            '--app-viewport-offset-top',
+        );
 
         return;
     }
 
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const viewport = window.visualViewport;
+    const viewportHeight = viewport?.height ?? window.innerHeight;
+    const viewportWidth = viewport?.width ?? window.innerWidth;
+    const viewportOffsetLeft = viewport?.offsetLeft ?? 0;
+    const viewportOffsetTop = viewport?.offsetTop ?? 0;
 
     document.documentElement.style.setProperty(
         '--app-viewport-height',
         `${Math.round(viewportHeight)}px`,
     );
+    document.documentElement.style.setProperty(
+        '--app-viewport-width',
+        `${Math.round(viewportWidth)}px`,
+    );
+    document.documentElement.style.setProperty(
+        '--app-viewport-offset-left',
+        `${Math.round(viewportOffsetLeft)}px`,
+    );
+    document.documentElement.style.setProperty(
+        '--app-viewport-offset-top',
+        `${Math.round(viewportOffsetTop)}px`,
+    );
+    resetWindowScroll();
 };
 
 const scheduleMobileAppViewportHeightUpdate = (): void => {
@@ -417,6 +472,36 @@ const scheduleMobileAppViewportHeightUpdate = (): void => {
         viewportResizeFrame = undefined;
         updateMobileAppViewportHeight();
     });
+};
+
+const expandMobileAppViewportAfterKeyboardClose = (): void => {
+    if (!isMobileAppShellActive()) {
+        return;
+    }
+
+    window.setTimeout(() => {
+        if (isFocusedInput()) {
+            return;
+        }
+
+        document.documentElement.style.setProperty(
+            '--app-viewport-height',
+            `${window.innerHeight}px`,
+        );
+        document.documentElement.style.setProperty(
+            '--app-viewport-width',
+            `${window.innerWidth}px`,
+        );
+        document.documentElement.style.setProperty(
+            '--app-viewport-offset-left',
+            '0px',
+        );
+        document.documentElement.style.setProperty(
+            '--app-viewport-offset-top',
+            '0px',
+        );
+        resetWindowScroll();
+    }, 0);
 };
 
 onMounted(() => {
@@ -438,6 +523,19 @@ onMounted(() => {
     mobileShellMediaQuery.addEventListener(
         'change',
         scheduleMobileAppViewportHeightUpdate,
+    );
+    window.addEventListener('scroll', scheduleWindowScrollReset, {
+        passive: true,
+    });
+    document.addEventListener(
+        'focusin',
+        scheduleMobileAppViewportHeightUpdate,
+        true,
+    );
+    document.addEventListener(
+        'focusout',
+        expandMobileAppViewportAfterKeyboardClose,
+        true,
     );
     window.addEventListener('keydown', handleEscape);
     window.addEventListener('padik:open-chat-list', openChatList);
@@ -505,6 +603,10 @@ onBeforeUnmount(() => {
         window.cancelAnimationFrame(viewportResizeFrame);
     }
 
+    if (scrollResetFrame) {
+        window.cancelAnimationFrame(scrollResetFrame);
+    }
+
     window.removeEventListener('resize', scheduleMobileAppViewportHeightUpdate);
     window.removeEventListener(
         'orientationchange',
@@ -522,7 +624,21 @@ onBeforeUnmount(() => {
         'change',
         scheduleMobileAppViewportHeightUpdate,
     );
+    window.removeEventListener('scroll', scheduleWindowScrollReset);
+    document.removeEventListener(
+        'focusin',
+        scheduleMobileAppViewportHeightUpdate,
+        true,
+    );
+    document.removeEventListener(
+        'focusout',
+        expandMobileAppViewportAfterKeyboardClose,
+        true,
+    );
     document.documentElement.style.removeProperty('--app-viewport-height');
+    document.documentElement.style.removeProperty('--app-viewport-width');
+    document.documentElement.style.removeProperty('--app-viewport-offset-left');
+    document.documentElement.style.removeProperty('--app-viewport-offset-top');
     window.removeEventListener('keydown', handleEscape);
     window.removeEventListener('padik:open-chat-list', openChatList);
     document.removeEventListener('click', handleDocumentClick);
