@@ -390,8 +390,55 @@ const handleDocumentClick = (event: MouseEvent) => {
 };
 
 let removeNavigationFinishListener: (() => void) | undefined;
+let viewportResizeFrame: number | undefined;
+let mobileShellMediaQuery: MediaQueryList | undefined;
+
+const updateMobileAppViewportHeight = (): void => {
+    if (!mobileShellMediaQuery?.matches) {
+        document.documentElement.style.removeProperty('--app-viewport-height');
+
+        return;
+    }
+
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+
+    document.documentElement.style.setProperty(
+        '--app-viewport-height',
+        `${Math.round(viewportHeight)}px`,
+    );
+};
+
+const scheduleMobileAppViewportHeightUpdate = (): void => {
+    if (viewportResizeFrame) {
+        window.cancelAnimationFrame(viewportResizeFrame);
+    }
+
+    viewportResizeFrame = window.requestAnimationFrame(() => {
+        viewportResizeFrame = undefined;
+        updateMobileAppViewportHeight();
+    });
+};
 
 onMounted(() => {
+    mobileShellMediaQuery = window.matchMedia('(width < 48rem)');
+    updateMobileAppViewportHeight();
+    window.addEventListener('resize', scheduleMobileAppViewportHeightUpdate);
+    window.addEventListener(
+        'orientationchange',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    window.visualViewport?.addEventListener(
+        'resize',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    window.visualViewport?.addEventListener(
+        'scroll',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    mobileShellMediaQuery.addEventListener(
+        'change',
+        scheduleMobileAppViewportHeightUpdate,
+    );
     window.addEventListener('keydown', handleEscape);
     window.addEventListener('padik:open-chat-list', openChatList);
     document.addEventListener('click', handleDocumentClick);
@@ -454,6 +501,28 @@ watch(
 );
 
 onBeforeUnmount(() => {
+    if (viewportResizeFrame) {
+        window.cancelAnimationFrame(viewportResizeFrame);
+    }
+
+    window.removeEventListener('resize', scheduleMobileAppViewportHeightUpdate);
+    window.removeEventListener(
+        'orientationchange',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    window.visualViewport?.removeEventListener(
+        'resize',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    window.visualViewport?.removeEventListener(
+        'scroll',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    mobileShellMediaQuery?.removeEventListener(
+        'change',
+        scheduleMobileAppViewportHeightUpdate,
+    );
+    document.documentElement.style.removeProperty('--app-viewport-height');
     window.removeEventListener('keydown', handleEscape);
     window.removeEventListener('padik:open-chat-list', openChatList);
     document.removeEventListener('click', handleDocumentClick);
