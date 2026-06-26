@@ -461,10 +461,19 @@ const updateMobileAppViewportHeight = (): void => {
     }
 
     const viewport = window.visualViewport;
-    const viewportHeight = viewport?.height ?? window.innerHeight;
-    const viewportWidth = viewport?.width ?? window.innerWidth;
-    const viewportOffsetLeft = viewport?.offsetLeft ?? 0;
-    const viewportOffsetTop = viewport?.offsetTop ?? 0;
+    const shouldUseVisualViewport = isFocusedInput();
+    const viewportHeight = shouldUseVisualViewport
+        ? (viewport?.height ?? window.innerHeight)
+        : window.innerHeight;
+    const viewportWidth = shouldUseVisualViewport
+        ? (viewport?.width ?? window.innerWidth)
+        : window.innerWidth;
+    const viewportOffsetLeft = shouldUseVisualViewport
+        ? (viewport?.offsetLeft ?? 0)
+        : 0;
+    const viewportOffsetTop = shouldUseVisualViewport
+        ? (viewport?.offsetTop ?? 0)
+        : 0;
 
     document.documentElement.style.setProperty(
         '--app-viewport-height',
@@ -674,14 +683,16 @@ onBeforeUnmount(() => {
 
 <template>
     <div
-        class="mobile-app-shell flex h-dvh w-full overflow-hidden bg-[#f5fafb] font-sans text-[#171d1e]"
+        class="mobile-app-shell flex h-dvh min-h-dvh w-full overflow-hidden bg-[#f5fafb] font-sans text-[#171d1e]"
     >
         <aside
-            class="h-dvh min-h-0 w-full shrink-0 flex-col border-r border-[#bbc9cb] bg-white sm:flex sm:w-96"
+            class="mobile-safe-area-bottom h-dvh min-h-0 w-full shrink-0 flex-col border-r border-[#bbc9cb] bg-white sm:flex sm:w-96"
             :class="isChatListOpen ? 'flex' : 'hidden'"
             aria-label="Conversations"
         >
-            <div class="space-y-4 border-b border-[#bbc9cb] p-4">
+            <div
+                class="mobile-safe-area-panel space-y-4 border-b border-[#bbc9cb] p-4"
+            >
                 <div class="flex items-center gap-3">
                     <button
                         class="grid size-10 place-items-center rounded-full text-[#171d1e] transition-colors hover:bg-[#e4e9ea]"
@@ -1073,7 +1084,7 @@ onBeforeUnmount(() => {
                 aria-busy="true"
             >
                 <header
-                    class="flex h-16 shrink-0 items-center border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
+                    class="mobile-safe-area-header flex h-16 shrink-0 items-center border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
                 >
                     <div
                         class="h-7 w-40 animate-pulse rounded-full bg-[#eff5f5]"
@@ -1120,7 +1131,7 @@ onBeforeUnmount(() => {
                 <aside
                     v-if="isDrawerOpen"
                     id="main-menu-drawer"
-                    class="fixed top-0 bottom-0 left-0 z-50 flex w-80 max-w-[86vw] flex-col border-r border-[#bbc9cb] bg-white shadow-2xl"
+                    class="mobile-safe-area-drawer fixed top-0 bottom-0 left-0 z-50 flex w-80 max-w-[86vw] flex-col border-r border-[#bbc9cb] bg-white shadow-2xl"
                     aria-label="Main menu"
                 >
                     <div

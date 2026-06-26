@@ -525,7 +525,7 @@ const openChatList = (): void => {
         class="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden bg-white"
     >
         <header
-            class="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
+            class="mobile-safe-area-header flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#bbc9cb] bg-white px-3 sm:px-6"
         >
             <div class="flex min-w-0 items-center gap-2">
                 <button

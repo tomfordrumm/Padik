@@ -104,7 +104,7 @@ const removeRoomMember = (userId: number) => {
 
     <section class="flex h-dvh min-w-0 flex-col overflow-hidden bg-white">
         <header
-            class="flex h-16 shrink-0 items-center gap-3 border-b border-[#bbc9cb] bg-white px-6"
+            class="mobile-safe-area-header flex h-16 shrink-0 items-center gap-3 border-b border-[#bbc9cb] bg-white px-6"
         >
             <Link
                 :href="showRoom(room.slug)"
