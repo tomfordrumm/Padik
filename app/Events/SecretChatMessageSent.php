@@ -4,6 +4,7 @@ namespace App\Events;
 
 use App\Models\Conversation;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -20,6 +21,8 @@ class SecretChatMessageSent implements ShouldBroadcastNow
         public string $ciphertext,
         public string $iv,
         public string $senderFingerprint,
+        public string $messageId,
+        public CarbonInterface $sentAt,
     ) {}
 
     /**
@@ -40,19 +43,20 @@ class SecretChatMessageSent implements ShouldBroadcastNow
     }
 
     /**
-     * @return array{message: array{id: string, sender_id: int, author: string, ciphertext: string, iv: string, sender_fingerprint: string, time: string}, conversation: array{id: int, slug: string, type: string}}
+     * @return array{message: array{id: string, sender_id: int, author: string, ciphertext: string, iv: string, sender_fingerprint: string, time: string, created_at: string|null}, conversation: array{id: int, slug: string, type: string}}
      */
     public function broadcastWith(): array
     {
         return [
             'message' => [
-                'id' => (string) str()->uuid(),
+                'id' => $this->messageId,
                 'sender_id' => $this->sender->id,
                 'author' => $this->sender->name,
                 'ciphertext' => $this->ciphertext,
                 'iv' => $this->iv,
                 'sender_fingerprint' => $this->senderFingerprint,
-                'time' => now()->format('H:i'),
+                'time' => $this->sentAt->format('H:i'),
+                'created_at' => $this->sentAt->toJSON(),
             ],
             'conversation' => [
                 'id' => $this->conversation->id,

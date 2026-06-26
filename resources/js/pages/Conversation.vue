@@ -19,6 +19,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useActiveConversationPresence } from '@/composables/useActiveConversationPresence';
 import { useConversationRealtime } from '@/composables/useConversationRealtime';
 import { useMessengerStore } from '@/composables/useMessengerStore';
 import type {
@@ -31,6 +32,10 @@ import { destroy as leaveRoom } from '@/routes/rooms/membership';
 import { store as storeMessage } from '@/routes/rooms/messages';
 import { edit as editRoomSettings } from '@/routes/rooms/settings';
 import { store as storeSecretChat } from '@/routes/secret-chats';
+import {
+    ack as ackSecretChatDelivery,
+    index as indexSecretChatDeliveries,
+} from '@/routes/secret-chats/deliveries';
 import { store as storeSecretChatMessage } from '@/routes/secret-chats/messages';
 import { show as showUserProfile } from '@/routes/users';
 import type { Auth, SecretChatMessagePayload, SecretChatProps } from '@/types';
@@ -52,9 +57,12 @@ type MentionableUser = {
     name: string;
 };
 
+type SecretChatPendingDelivery = SecretChatMessagePayload['message'];
+
 const messageForm = useHttp({
     body: '',
 });
+const secretDeliveryHttp = useHttp();
 
 const page = usePage();
 const currentUserId = Number((page.props.auth as Auth).user.id);
@@ -85,10 +93,13 @@ const {
     status: secretStatus,
     applyParticipant: applySecretParticipant,
     decryptMessage: decryptSecretMessage,
+    decryptMessageResult: decryptSecretMessageResult,
     encryptMessage: encryptSecretMessage,
     setup: setupSecretChat,
     synchronizeSender: synchronizeSecretChatSender,
 } = useSecretChat(currentRoom, secretChat, currentUserId);
+
+const pendingSecretDeliveriesLoading = ref(false);
 
 const isOwnMessage = (message: Message): boolean => message.own === true;
 
@@ -286,6 +297,74 @@ const applySecretMessage = async (
     void scrollMessagesToBottom();
 };
 
+const loadPendingSecretDeliveries = async (): Promise<void> => {
+    if (
+        !currentRoom.value ||
+        !isSecretRoom.value ||
+        !secretSharedKey.value ||
+        pendingSecretDeliveriesLoading.value
+    ) {
+        return;
+    }
+
+    pendingSecretDeliveriesLoading.value = true;
+
+    try {
+        const response = (await secretDeliveryHttp.submit(
+            indexSecretChatDeliveries(currentRoom.value.slug),
+        )) as { messages: SecretChatPendingDelivery[] };
+
+        for (const delivery of response.messages) {
+            if (delivery.sender_id === currentUserId) {
+                continue;
+            }
+
+            await synchronizeSecretChatSender(delivery.sender_fingerprint);
+
+            const decrypted = await decryptSecretMessageResult(
+                delivery.ciphertext,
+                delivery.iv,
+            );
+
+            messenger.applyMessage({
+                message: {
+                    id: delivery.id,
+                    sender_id: delivery.sender_id,
+                    author: delivery.author,
+                    body: decrypted.body,
+                    time: delivery.time,
+                    own: false,
+                },
+                conversation: {
+                    id: currentRoom.value.id,
+                    slug: currentRoom.value.slug,
+                    type: currentRoom.value.type,
+                    direct_user_id: currentRoom.value.direct_user_id,
+                },
+            });
+
+            if (decrypted.decrypted) {
+                try {
+                    await secretDeliveryHttp.submit(
+                        ackSecretChatDelivery({
+                            conversation: currentRoom.value.slug,
+                            delivery: delivery.id,
+                        }),
+                    );
+                } catch {
+                    // A later mailbox fetch will retry the ack; the message store de-dupes by id.
+                }
+            }
+        }
+
+        if (response.messages.length > 0) {
+            await scrollMessagesToBottom();
+        }
+    } finally {
+        pendingSecretDeliveriesLoading.value = false;
+    }
+};
+
 useConversationRealtime(currentRoom, {
     onRoomMessage: applyMessage,
     onSecretChatMessage: applySecretMessage,
@@ -294,6 +373,7 @@ useConversationRealtime(currentRoom, {
         await setupSecretChat();
     },
 });
+useActiveConversationPresence(currentRoom);
 
 watch(
     () =>
@@ -314,6 +394,14 @@ watch(mentionSuggestions, (suggestions) => {
         activeMentionIndex.value = 0;
     }
 });
+
+watch(
+    [currentRoom, secretSharedKey],
+    () => {
+        void loadPendingSecretDeliveries();
+    },
+    { immediate: true },
+);
 
 const submitSecretMessage = async (body: string): Promise<void> => {
     if (!currentRoom.value || !secretFingerprint.value) {

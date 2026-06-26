@@ -2,6 +2,7 @@
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import {
     Bell,
+    BellRing,
     Check,
     LogOut,
     Menu,
@@ -33,6 +34,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { useMessengerStore } from '@/composables/useMessengerStore';
 import type { MessagePayload } from '@/composables/useMessengerStore';
+import { usePushNotifications } from '@/composables/usePushNotifications';
 import { logout } from '@/routes';
 import { show as showDirectMessage } from '@/routes/direct-messages';
 import { read as readNotifications } from '@/routes/notifications';
@@ -45,6 +47,7 @@ import { read as readNotification } from '@/routes/notifications/item';
 import { edit as editProfile } from '@/routes/profile';
 import { show as showRoom, store as storeRoom } from '@/routes/rooms';
 import { store as storeRoomInvitation } from '@/routes/rooms/invitations';
+import { edit as editNotifications } from '@/routes/settings/notifications';
 import type {
     Auth,
     DirectMessageUserNavItem,
@@ -72,6 +75,7 @@ type ChatPreview = {
 const page = usePage();
 const currentUserId = Number((page.props.auth as Auth).user.id);
 const messenger = useMessengerStore(currentUserId);
+const pushNotifications = usePushNotifications();
 const activeTab = ref<'rooms' | 'dms'>(
     page.url.startsWith('/dms/') ? 'dms' : 'rooms',
 );
@@ -137,6 +141,9 @@ const invitableUsers = computed(() =>
 const notifications = computed<NotificationNav>(
     () => messenger.notifications.value,
 );
+const shouldShowPushPrompt = computed(
+    () => pushNotifications.status.value === 'default',
+);
 
 type BroadcastNotification = NotificationItem & {
     id?: string;
@@ -150,6 +157,11 @@ const closeDrawer = () => {
 
 const closeNotifications = () => {
     areNotificationsOpen.value = false;
+};
+
+const openNotificationSettings = () => {
+    closeNotifications();
+    router.visit(editNotifications.url());
 };
 
 const openChatList = () => {
@@ -331,6 +343,16 @@ const declineInvitationNotification = (notification: NotificationItem) => {
             },
         },
     );
+};
+
+const enablePushFromNotifications = async () => {
+    await pushNotifications.enable();
+};
+
+const submitLogout = async (): Promise<void> => {
+    closeDrawer();
+    await pushNotifications.disable();
+    router.post(logout.url());
 };
 
 const appendNotification = (notification: BroadcastNotification) => {
@@ -729,6 +751,58 @@ onBeforeUnmount(() => {
                             <div
                                 class="chat-scroll max-h-96 overflow-y-auto py-1"
                             >
+                                <div
+                                    v-if="shouldShowPushPrompt"
+                                    class="m-2 rounded-lg border border-[#bbc9cb] bg-[#eff5f5] p-3"
+                                >
+                                    <div class="flex items-start gap-3">
+                                        <span
+                                            class="grid size-9 shrink-0 place-items-center rounded-full bg-white text-[#007681]"
+                                        >
+                                            <BellRing class="size-4" />
+                                        </span>
+                                        <div class="min-w-0 flex-1">
+                                            <p
+                                                class="text-sm font-bold text-[#171d1e]"
+                                            >
+                                                Enable push alerts
+                                            </p>
+                                            <p
+                                                class="mt-1 text-xs leading-5 text-[#6c797c]"
+                                            >
+                                                Get private message alerts on
+                                                this device.
+                                            </p>
+                                            <div
+                                                class="mt-3 flex flex-wrap gap-2"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="rounded-full bg-[#007681] px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-[#006874] disabled:bg-[#8a989b]"
+                                                    :disabled="
+                                                        pushNotifications.status
+                                                            .value === 'loading'
+                                                    "
+                                                    @click.stop="
+                                                        enablePushFromNotifications
+                                                    "
+                                                >
+                                                    Enable
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    class="rounded-full px-3 py-1.5 text-xs font-bold text-[#007681] transition-colors hover:bg-white"
+                                                    @click.stop="
+                                                        openNotificationSettings
+                                                    "
+                                                >
+                                                    Settings
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <button
                                     v-for="notification in notifications.items"
                                     :key="notification.id"
@@ -1077,16 +1151,14 @@ onBeforeUnmount(() => {
                             Profile settings
                         </Link>
 
-                        <Link
-                            :href="logout()"
-                            method="post"
-                            as="button"
+                        <button
+                            type="button"
                             class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-[#ba1a1a] transition-colors hover:bg-[#ffdad6]/60"
-                            @click="closeDrawer"
+                            @click="submitLogout"
                         >
                             <LogOut class="size-5" />
                             Log out
-                        </Link>
+                        </button>
                     </nav>
                 </aside>
             </Transition>

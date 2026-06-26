@@ -9,21 +9,25 @@ use App\Models\Conversation;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Notifications\RoomInvitationReceived;
+use App\Services\Push\MessengerPushNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class RoomInvitationController extends Controller
 {
-    public function store(StoreRoomInvitationRequest $request, Conversation $conversation): RedirectResponse
-    {
+    public function store(
+        StoreRoomInvitationRequest $request,
+        Conversation $conversation,
+        MessengerPushNotificationService $pushNotifications,
+    ): RedirectResponse {
         $sender = $request->user();
         $userIds = collect($request->validated('user_ids'))
             ->map(fn (int|string $userId): int => (int) $userId)
             ->unique()
             ->values();
 
-        $userIds->each(function (int $userId) use ($conversation, $sender): void {
+        $userIds->each(function (int $userId) use ($conversation, $pushNotifications, $sender): void {
             $invitation = Invitation::query()->firstOrCreate(
                 [
                     'conversation_id' => $conversation->id,
@@ -36,9 +40,10 @@ class RoomInvitationController extends Controller
             );
 
             if ($invitation->wasRecentlyCreated) {
-                User::query()
-                    ->findOrFail($userId)
-                    ->notify(new RoomInvitationReceived($invitation));
+                $recipient = User::query()->findOrFail($userId);
+
+                $recipient->notify(new RoomInvitationReceived($invitation));
+                $pushNotifications->dispatchRoomInvitation($invitation, $recipient);
             }
         });
 

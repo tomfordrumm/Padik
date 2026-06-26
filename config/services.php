@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    'webpush' => [
+        'vapid' => [
+            'subject' => env('VAPID_SUBJECT', env('APP_URL', 'http://localhost')),
+            'public_key' => env('VAPID_PUBLIC_KEY'),
+            'private_key' => env('VAPID_PRIVATE_KEY'),
+        ],
+        'ttl' => env('WEBPUSH_TTL', 3600),
+        'urgency' => env('WEBPUSH_URGENCY', 'normal'),
+        'timeout' => env('WEBPUSH_TIMEOUT', 10),
+    ],
+
 ];

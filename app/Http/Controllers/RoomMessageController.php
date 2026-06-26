@@ -10,6 +10,7 @@ use App\Models\Conversation;
 use App\Models\User;
 use App\Notifications\DirectMessageReceived;
 use App\Notifications\MentionReceived;
+use App\Services\Push\MessengerPushNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
@@ -17,8 +18,11 @@ use Illuminate\Support\Str;
 
 class RoomMessageController extends Controller
 {
-    public function store(StoreRoomMessageRequest $request, Conversation $conversation): JsonResponse|RedirectResponse
-    {
+    public function store(
+        StoreRoomMessageRequest $request,
+        Conversation $conversation,
+        MessengerPushNotificationService $pushNotifications,
+    ): JsonResponse|RedirectResponse {
         $body = $request->validated('body');
 
         $message = $conversation->messages()->create([
@@ -36,11 +40,17 @@ class RoomMessageController extends Controller
             $conversation->users()
                 ->whereKeyNot($request->user()->id)
                 ->get()
-                ->each(fn (User $recipient) => $recipient->notify(new DirectMessageReceived($message)));
+                ->each(function (User $recipient) use ($message, $pushNotifications): void {
+                    $recipient->notify(new DirectMessageReceived($message));
+                    $pushNotifications->dispatchDirectMessage($message, $recipient);
+                });
         }
 
         $this->mentionedRecipients($conversation, $request->user(), $body)
-            ->each(fn (User $recipient) => $recipient->notify(new MentionReceived($message)));
+            ->each(function (User $recipient) use ($message, $pushNotifications): void {
+                $recipient->notify(new MentionReceived($message));
+                $pushNotifications->dispatchMention($message, $recipient);
+            });
 
         if ($request->expectsJson()) {
             return response()->json([

@@ -52,6 +52,11 @@ class Conversation extends Model
         return $this->hasMany(Message::class);
     }
 
+    public function secretMessageDeliveries(): HasMany
+    {
+        return $this->hasMany(SecretMessageDelivery::class);
+    }
+
     public function firstUnreadMessageIdFor(User $user): ?int
     {
         $participant = $this->participants()

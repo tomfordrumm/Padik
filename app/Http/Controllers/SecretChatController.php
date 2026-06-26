@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\Invitation;
 use App\Models\User;
 use App\Notifications\SecretChatInvitationReceived;
+use App\Services\Push\MessengerPushNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -16,8 +17,12 @@ use Inertia\Response;
 
 class SecretChatController extends Controller
 {
-    public function store(Request $request, User $user, EnsureSecretConversation $secretConversation): RedirectResponse
-    {
+    public function store(
+        Request $request,
+        User $user,
+        EnsureSecretConversation $secretConversation,
+        MessengerPushNotificationService $pushNotifications,
+    ): RedirectResponse {
         $conversation = $secretConversation->between($request->user(), $user);
         $invitation = Invitation::query()->create([
             'conversation_id' => $conversation->id,
@@ -27,6 +32,7 @@ class SecretChatController extends Controller
         ]);
 
         $user->notify(new SecretChatInvitationReceived($invitation));
+        $pushNotifications->dispatchSecretChatInvitation($invitation, $user);
 
         return to_route('secret-chats.show', ['conversation' => $conversation->slug]);
     }

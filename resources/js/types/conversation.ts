@@ -24,6 +24,7 @@ export type SecretChatMessagePayload = {
         iv: string;
         sender_fingerprint: string;
         time: string;
+        created_at?: string | null;
     };
 };
 

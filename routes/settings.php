@@ -21,4 +21,5 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
+    Route::inertia('settings/notifications', 'settings/Notifications')->name('settings.notifications.edit');
 });

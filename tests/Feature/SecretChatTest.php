@@ -9,6 +9,7 @@ use App\Events\SecretChatMessageSent;
 use App\Models\Conversation;
 use App\Models\Invitation;
 use App\Models\Message;
+use App\Models\SecretMessageDelivery;
 use App\Models\User;
 use App\Notifications\SecretChatInvitationReceived;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -193,6 +194,7 @@ class SecretChatTest extends TestCase
             ->assertJsonMissingPath('message.body');
 
         $this->assertSame(0, Message::query()->count());
+        $this->assertSame(1, SecretMessageDelivery::query()->count());
 
         Event::assertDispatched(
             SecretChatMessageSent::class,

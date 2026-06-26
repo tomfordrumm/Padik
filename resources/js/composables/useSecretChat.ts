@@ -17,6 +17,11 @@ type EncryptedSecretMessage = {
     iv: string;
 };
 
+type DecryptedSecretMessage = {
+    body: string;
+    decrypted: boolean;
+};
+
 type SecretPublicKey = Required<Pick<JsonWebKey, 'crv' | 'kty' | 'x' | 'y'>>;
 
 const secretKeyDatabaseName = 'padik-secret-chat-keys';
@@ -402,12 +407,15 @@ export function useSecretChat(
         };
     };
 
-    const decryptMessage = async (
+    const decryptMessageResult = async (
         ciphertext: string,
         iv: string,
-    ): Promise<string> => {
+    ): Promise<DecryptedSecretMessage> => {
         if (!sharedKey.value) {
-            return '[Encrypted message: key not ready]';
+            return {
+                body: '[Encrypted message: key not ready]',
+                decrypted: false,
+            };
         }
 
         try {
@@ -420,11 +428,23 @@ export function useSecretChat(
                 base64ToBytes(ciphertext) as BufferSource,
             );
 
-            return new TextDecoder().decode(plaintext);
+            return {
+                body: new TextDecoder().decode(plaintext),
+                decrypted: true,
+            };
         } catch {
-            return '[Encrypted message: cannot decrypt]';
+            return {
+                body: '[Encrypted message: cannot decrypt]',
+                decrypted: false,
+            };
         }
     };
+
+    const decryptMessage = async (
+        ciphertext: string,
+        iv: string,
+    ): Promise<string> =>
+        (await decryptMessageResult(ciphertext, iv)).body;
 
     watch(
         [currentRoom, secretChat],
@@ -442,6 +462,7 @@ export function useSecretChat(
         status,
         applyParticipant,
         decryptMessage,
+        decryptMessageResult,
         encryptMessage,
         setup,
         synchronizeSender,

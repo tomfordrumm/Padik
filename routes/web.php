@@ -3,6 +3,8 @@
 use App\Http\Controllers\DirectMessageController;
 use App\Http\Controllers\InvitationResponseController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PushPresenceController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\RoomInvitationController;
 use App\Http\Controllers\RoomMemberController;
@@ -10,6 +12,7 @@ use App\Http\Controllers\RoomMembershipController;
 use App\Http\Controllers\RoomMessageController;
 use App\Http\Controllers\RoomSettingsController;
 use App\Http\Controllers\SecretChatController;
+use App\Http\Controllers\SecretChatDeliveryController;
 use App\Http\Controllers\SecretChatKeyController;
 use App\Http\Controllers\SecretChatMessageController;
 use App\Http\Controllers\UserProfileController;
@@ -26,6 +29,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dms/{user}', DirectMessageController::class)->name('direct-messages.show');
     Route::post('secret-chats/{user}', [SecretChatController::class, 'store'])->name('secret-chats.store');
     Route::get('secret-chats/{conversation:slug}', [SecretChatController::class, 'show'])->name('secret-chats.show');
+    Route::get('secret-chats/{conversation:slug}/deliveries', [SecretChatDeliveryController::class, 'index'])->name('secret-chats.deliveries.index');
+    Route::post('secret-chats/{conversation:slug}/deliveries/{delivery}/ack', [SecretChatDeliveryController::class, 'acknowledge'])->name('secret-chats.deliveries.ack');
     Route::post('secret-chats/{conversation:slug}/key', [SecretChatKeyController::class, 'store'])->name('secret-chats.key.store');
     Route::post('secret-chats/{conversation:slug}/messages', [SecretChatMessageController::class, 'store'])->name('secret-chats.messages.store');
     Route::post('notifications/read', [NotificationController::class, 'markAllAsRead'])->name('notifications.read');
@@ -33,6 +38,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('notifications/from/{sender}/read', [NotificationController::class, 'markFromSenderAsRead'])->name('notifications.from-sender.read');
     Route::post('notifications/{notification}/accept-invitation', [InvitationResponseController::class, 'accept'])->name('notifications.invitations.accept');
     Route::post('notifications/{notification}/decline-invitation', [InvitationResponseController::class, 'decline'])->name('notifications.invitations.decline');
+    Route::get('push-subscriptions/key', [PushSubscriptionController::class, 'key'])->name('push-subscriptions.key');
+    Route::post('push-subscriptions', [PushSubscriptionController::class, 'store'])->name('push-subscriptions.store');
+    Route::delete('push-subscriptions', [PushSubscriptionController::class, 'destroy'])->name('push-subscriptions.destroy');
+    Route::post('push-presence', [PushPresenceController::class, 'store'])->name('push-presence.store');
+    Route::delete('push-presence', [PushPresenceController::class, 'destroy'])->name('push-presence.destroy');
     Route::post('r', [RoomController::class, 'store'])->name('rooms.store');
     Route::get('r/{conversation:slug}', RoomController::class)->name('rooms.show');
     Route::get('r/{conversation:slug}/settings', [RoomSettingsController::class, 'edit'])->name('rooms.settings.edit');
